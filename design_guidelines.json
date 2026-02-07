@@ -1,0 +1,144 @@
+{
+  "identity": {
+    "name": "E1 - The Anti-AI Designer",
+    "mission": "Create a Paperless Transaction System that feels like a high-performance financial terminal mixed with a modern email client. No boring 'corporate gray' slop. Optimize for density, speed, and clarity.",
+    "principles": [
+      "Fusion: Financial Terminal density + Consumer Email fluidity",
+      "Emotion: Trust, Precision, Velocity",
+      "Content: Data is the interface. Minimize decorative containers.",
+      "Negative Space: Use it to separate contexts (Nav vs List vs Detail)."
+    ],
+    "anti_patterns": [
+      "Purple/Teal primary buttons (Use deep indigo or electric blue)",
+      "Card-heavy interfaces (Use 1px borders and whitespace)",
+      "Symmetry (Use asymmetric 3-panel layouts)",
+      "Generic 'Inter' headings (Use Manrope or Plus Jakarta Sans)"
+    ]
+  },
+  "typography": {
+    "fonts": {
+      "primary": "Manrope",
+      "secondary": "Inter",
+      "mono": "JetBrains Mono"
+    },
+    "scale": {
+      "h1": "text-3xl font-bold tracking-tight",
+      "h2": "text-2xl font-semibold tracking-tight",
+      "h3": "text-xl font-medium",
+      "body": "text-sm leading-relaxed",
+      "small": "text-xs font-medium text-muted-foreground",
+      "mono": "font-mono text-xs tracking-wide"
+    }
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "default": "#2563EB",
+        "hover": "#1D4ED8",
+        "foreground": "#FFFFFF"
+      },
+      "secondary": {
+        "default": "#F1F5F9",
+        "foreground": "#0F172A"
+      },
+      "background": {
+        "app": "#FFFFFF",
+        "sidebar": "#0F172A",
+        "list_panel": "#F8FAFC",
+        "detail_panel": "#FFFFFF"
+      },
+      "semantic": {
+        "success": "#10B981",
+        "warning": "#F59E0B",
+        "error": "#EF4444",
+        "info": "#3B82F6"
+      }
+    },
+    "gradients": {
+      "login_overlay": "linear-gradient(to bottom, rgba(15, 23, 42, 0.4), rgba(15, 23, 42, 0.9))"
+    }
+  },
+  "layout": {
+    "structure": "3-panel-outlook",
+    "panels": {
+      "sidebar": {
+        "width": "w-64",
+        "bg": "bg-slate-900",
+        "text": "text-slate-300",
+        "border": "border-none"
+      },
+      "list": {
+        "width": "w-80 lg:w-96",
+        "bg": "bg-slate-50/50",
+        "border": "border-r border-slate-200"
+      },
+      "detail": {
+        "width": "flex-1",
+        "bg": "bg-white",
+        "padding": "p-8 lg:p-12"
+      }
+    },
+    "spacing": {
+      "standard": "p-6",
+      "dense": "p-3",
+      "relaxed": "p-10"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "rounded-md bg-blue-600 text-white hover:bg-blue-700 shadow-sm font-medium transition-all active:scale-95",
+      "secondary": "rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm",
+      "ghost": "rounded-md hover:bg-slate-100 text-slate-600"
+    },
+    "cards": {
+      "style": "flat",
+      "border": "border border-slate-200",
+      "shadow": "shadow-sm hover:shadow-md transition-shadow",
+      "radius": "rounded-lg"
+    },
+    "inputs": {
+      "style": "bg-white border-slate-200 focus:ring-2 focus:ring-blue-100 focus:border-blue-500 rounded-md"
+    },
+    "status_badges": {
+      "pending": "bg-slate-100 text-slate-600 border border-slate-200",
+      "in_progress": "bg-blue-50 text-blue-700 border border-blue-200 animate-pulse-slow",
+      "approved": "bg-emerald-50 text-emerald-700 border border-emerald-200",
+      "rejected": "bg-red-50 text-red-700 border border-red-200"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-xl bg-white/70 border-b border-white/20",
+    "shadows": {
+      "ambient": "shadow-[0_2px_8px_rgba(0,0,0,0.04)]",
+      "floating": "shadow-[0_12px_24px_rgba(0,0,0,0.08)]"
+    },
+    "borders": "border-slate-100"
+  },
+  "assets": {
+    "images": {
+      "login_bg": "https://images.unsplash.com/photo-1761979089822-0b058236d195?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "login_bg_alt_1": "https://images.unsplash.com/photo-1761219989571-b03440500bae?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "login_bg_alt_2": "https://images.unsplash.com/photo-1763251177167-85a9ca1966a8?crop=entropy&cs=srgb&fm=jpg&q=85"
+    }
+  },
+  "motion": {
+    "hover": "transition-all duration-200 ease-in-out",
+    "panel_slide": "animate-in slide-in-from-right-4 duration-300",
+    "fade_in": "animate-in fade-in duration-500"
+  },
+  "universal_guidelines": [
+    "Do not use generic 'corporate' gradients. Use solid colors or subtle mesh gradients.",
+    "Ensure the sidebar is dark mode (slate-900) while the main content is light mode.",
+    "Use 1px borders to separate panels, not heavy shadows.",
+    "For the approval workflow, visualize it as a horizontal chain of nodes.",
+    "Data density is key in the middle list panel. Don't use massive padding there.",
+    "The Detail panel should look like a printed document on a desk (clean, white, structured)."
+  ],
+  "instructions_to_main_agent": {
+    "step_1": "Setup global CSS to use Manrope/Inter fonts.",
+    "step_2": "Create the 'Shell' layout (Sidebar, Resizable Panels for List/Detail).",
+    "step_3": "Implement the 'Request Card' component for the middle list (compact, showing status, date, title).",
+    "step_4": "Build the 'Approval Chain' component using Lucide icons and connector lines.",
+    "step_5": "Ensure mobile responsiveness: On mobile, 3 panels become a navigation stack."
+  }
+}
