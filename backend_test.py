@@ -139,7 +139,7 @@ class WorkflowBridgeAPITester:
                 "password": "test123", 
                 "name": "Test Requestor",
                 "role": "requestor",
-                "department_id": "dept_general"
+                "department_id": "09e57060-7d87-41b6-9cdd-b3d5d1387d10"
             },
             use_admin=True
         )
