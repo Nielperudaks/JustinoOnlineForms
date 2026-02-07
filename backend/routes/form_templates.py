@@ -39,7 +39,7 @@ class TemplateUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-@templates_router.get("/")
+@templates_router.get("")
 async def list_templates(
     department_id: Optional[str] = None,
     user=Depends(get_current_user)
