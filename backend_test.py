@@ -30,6 +30,13 @@ class WorkflowBridgeAPITester:
             test_headers['Authorization'] = f'Bearer {token_to_use}'
         if headers:
             test_headers.update(headers)
+            
+        # Debug logging
+        self.log(f"  → {method} {url}")
+        if token_to_use:
+            self.log(f"  → Using token: {token_to_use[:20]}...{token_to_use[-10:]}")
+        else:
+            self.log("  → No token provided")
 
         self.tests_run += 1
         self.log(f"🔍 Testing {name}...")
