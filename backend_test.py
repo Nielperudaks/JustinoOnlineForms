@@ -120,7 +120,7 @@ class WorkflowBridgeAPITester:
                 "password": "test123",
                 "name": "Test Approver",
                 "role": "approver",
-                "department_id": "dept_general"  # Assuming general dept exists
+                "department_id": "09e57060-7d87-41b6-9cdd-b3d5d1387d10"  # General department
             },
             use_admin=True
         )
