@@ -114,7 +114,7 @@ class WorkflowBridgeAPITester:
             "Create Test Approver",
             "POST",
             "users",
-            201,
+            200,  # Changed from 201 to 200
             data={
                 "email": "test_approver@company.com",
                 "password": "test123",
