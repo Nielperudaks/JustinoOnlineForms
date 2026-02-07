@@ -21,7 +21,7 @@ class RequestAction(BaseModel):
     comments: Optional[str] = ""
 
 
-@requests_router.get("/")
+@requests_router.get("")
 async def list_requests(
     status: Optional[str] = None,
     department_id: Optional[str] = None,
