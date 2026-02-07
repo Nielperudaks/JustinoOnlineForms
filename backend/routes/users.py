@@ -28,7 +28,7 @@ class PasswordChange(BaseModel):
     new_password: str
 
 
-@users_router.get("/")
+@users_router.get("")
 async def list_users(
     department_id: Optional[str] = None,
     role: Optional[str] = None,
