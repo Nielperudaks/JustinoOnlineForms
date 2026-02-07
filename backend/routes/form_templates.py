@@ -65,7 +65,7 @@ async def get_template(template_id: str, user=Depends(get_current_user)):
     return tmpl
 
 
-@templates_router.post("")
+@templates_router.post("", status_code=201)
 async def create_template(req: TemplateCreate, admin=Depends(require_admin)):
     dept = await db.departments.find_one({"id": req.department_id}, {"_id": 0})
     if not dept:
