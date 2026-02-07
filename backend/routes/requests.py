@@ -67,7 +67,7 @@ async def get_request(request_id: str, user=Depends(get_current_user)):
     return req
 
 
-@requests_router.post("")
+@requests_router.post("", status_code=201)
 async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     tmpl = await db.form_templates.find_one({"id": req.form_template_id, "is_active": True}, {"_id": 0})
     if not tmpl:
