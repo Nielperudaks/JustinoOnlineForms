@@ -32,7 +32,7 @@ async def list_all_departments(admin=Depends(require_admin)):
     return depts
 
 
-@departments_router.post("/")
+@departments_router.post("")
 async def create_department(req: DepartmentCreate, admin=Depends(require_admin)):
     existing = await db.departments.find_one({"code": req.code.upper()}, {"_id": 0})
     if existing:
