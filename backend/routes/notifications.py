@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
-@notifications_router.get("/")
+@notifications_router.get("")
 async def list_notifications(
     unread_only: bool = False,
     page: int = Query(1, ge=1),
