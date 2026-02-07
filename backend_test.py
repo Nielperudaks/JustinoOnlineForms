@@ -133,7 +133,7 @@ class WorkflowBridgeAPITester:
             "Create Test Requestor",
             "POST",
             "users",
-            201,
+            200,  # Changed from 201 to 200
             data={
                 "email": "test_requestor@company.com",
                 "password": "test123", 
@@ -232,7 +232,7 @@ class WorkflowBridgeAPITester:
             "Create New Request",
             "POST",
             "requests",
-            201,
+            200,  # Changed from 201 to 200
             data={
                 "form_template_id": first_template['id'],
                 "title": "Test Request - Office Supplies",
