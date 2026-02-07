@@ -20,7 +20,7 @@ class DepartmentUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-@departments_router.get("/")
+@departments_router.get("")
 async def list_departments(user=Depends(get_current_user)):
     depts = await db.departments.find({"is_active": True}, {"_id": 0}).to_list(100)
     return depts
