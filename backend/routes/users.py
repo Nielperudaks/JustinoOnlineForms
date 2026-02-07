@@ -47,7 +47,7 @@ async def list_users(
     return users
 
 
-@users_router.post("/")
+@users_router.post("")
 async def create_user(req: UserCreate, admin=Depends(require_admin)):
     existing = await db.users.find_one({"email": req.email.lower()}, {"_id": 0})
     if existing:
