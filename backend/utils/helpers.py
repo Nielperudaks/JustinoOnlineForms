@@ -10,6 +10,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from pathlib import Path
+import hashlib
 
 ROOT_DIR = Path(__file__).parent.parent
 load_dotenv(ROOT_DIR / '.env')
@@ -20,7 +21,13 @@ JWT_SECRET = os.environ.get('JWT_SECRET', 'fallback_secret')
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(
+    schemes=["argon2"],
+    deprecated="auto"
+)
+
 security = HTTPBearer()
 
 mongo_url = os.environ['MONGO_URL']
@@ -34,11 +41,15 @@ if RESEND_API_KEY:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # Pre-hash to fixed length (bcrypt-safe)
+    sha = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return pwd_context.hash(sha)
+
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    sha = hashlib.sha256(plain.encode("utf-8")).hexdigest()
+    return pwd_context.verify(sha, hashed)
 
 
 def create_token(user_id: str, role: str) -> str:
@@ -62,6 +73,8 @@ def decode_token(token: str) -> dict:
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = decode_token(credentials.credentials)
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+    logger.info(f"Login attempt for: {user.get('email', 'Unknown')}")
+    logger.info(f"User found: {bool(user)}")
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     if not user.get("is_active", True):
