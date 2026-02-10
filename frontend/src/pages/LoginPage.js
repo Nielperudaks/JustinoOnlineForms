@@ -86,7 +86,7 @@ export default function LoginPage() {
             <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
               <FileText className="w-4 h-4 text-white" />
             </div>
-            <span className="text-slate-900 text-lg font-bold">Workflow Bridge</span>
+            <span className="text-slate-900 text-lg font-bold">Justino Online Forms</span>
           </div>
 
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Sign in</h2>

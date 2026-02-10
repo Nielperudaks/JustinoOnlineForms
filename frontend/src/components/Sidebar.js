@@ -27,7 +27,7 @@ export default function Sidebar({
             <FileText className="w-4 h-4 text-white" />
           </div>
           <div>
-            <div className="text-white text-sm font-bold tracking-tight">Workflow Bridge</div>
+            <div className="text-white text-sm font-bold tracking-tight">Justino Online Forms</div>
             <div className="text-slate-500 text-[10px] uppercase tracking-widest font-medium">Paperless System</div>
           </div>
         </div>

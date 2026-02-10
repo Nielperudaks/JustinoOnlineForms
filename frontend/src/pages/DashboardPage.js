@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
@@ -36,6 +36,36 @@ export default function DashboardPage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const [listWidth, setListWidth] = useState(480);
+  const minListWidth = 240;
+  const maxListWidth = 480;
+  const isResizingRef = useRef(false);
+
+  const handleResizeStart = useCallback((e) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    const startX = e.clientX;
+    const startWidth = listWidth;
+
+    const onMouseMove = (moveEvent) => {
+      const delta = moveEvent.clientX - startX;
+      setListWidth((prev) => Math.min(maxListWidth, Math.max(minListWidth, startWidth + delta)));
+    };
+
+    const onMouseUp = () => {
+      isResizingRef.current = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [listWidth, minListWidth, maxListWidth]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -209,7 +239,7 @@ export default function DashboardPage() {
               >
                 <Bell className="w-4.5 h-4.5 text-slate-500" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                  <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
@@ -251,9 +281,12 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 2-panel: list + detail */}
-        <div className="flex-1 flex overflow-hidden">
-          <div className="w-80 lg:w-96 border-r border-slate-200 bg-slate-50/50 flex-shrink-0 overflow-y-auto">
+        {/* 2-panel: list + detail (resizable divider) */}
+        <div className="flex-1 flex overflow-hidden min-h-0">
+          <div
+            className="border-r border-slate-200 bg-slate-50/50 flex-shrink-0 overflow-hidden flex flex-col min-w-0"
+            style={{ width: listWidth, minWidth: minListWidth }}
+          >
             <RequestList
               requests={requests}
               selectedRequest={selectedRequest}
@@ -263,7 +296,15 @@ export default function DashboardPage() {
               loading={loading}
             />
           </div>
-          <div className="flex-1 overflow-y-auto bg-white">
+          <div
+            role="separator"
+            aria-label="Resize panels"
+            className="w-1 flex-shrink-0 bg-slate-200 hover:bg-blue-400 active:bg-blue-500 cursor-col-resize transition-colors flex items-center justify-center group"
+            onMouseDown={handleResizeStart}
+          >
+            <div className="w-0.5 h-8 bg-slate-400 group-hover:bg-blue-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+          <div className="flex-1 min-w-0 overflow-y-auto bg-white">
             <RequestDetail
               request={selectedRequest}
               currentUser={user}

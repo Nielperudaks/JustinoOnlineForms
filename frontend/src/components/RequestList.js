@@ -21,7 +21,7 @@ export default function RequestList({
   requests, selectedRequest, onSelect, searchQuery, onSearchChange, loading
 }) {
   return (
-    <div className="h-full flex flex-col" data-testid="request-list">
+    <div className="h-full flex flex-col min-h-0 min-w-0" data-testid="request-list">
       {/* Search bar */}
       <div className="p-3 border-b border-slate-200">
         <div className="relative">
@@ -37,7 +37,7 @@ export default function RequestList({
       </div>
 
       {/* Request items */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="p-8 text-center">
             <div className="animate-pulse-slow text-sm text-slate-400">Loading requests...</div>
@@ -82,8 +82,8 @@ export default function RequestList({
                     <span className="truncate">{req.form_template_name}</span>
                     <span className="flex-shrink-0 ml-2">{timeAgo}</span>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
-                    <span>By {req.requester_name}</span>
+                  <div className="flex items-center gap-2 mt-1 text-xs text-slate-400 min-w-0">
+                    <span className="truncate">By {req.requester_name}</span>
                     {req.total_approval_steps > 0 && (
                       <span className="font-mono text-[10px]">
                         Step {req.current_approval_step}/{req.total_approval_steps}
