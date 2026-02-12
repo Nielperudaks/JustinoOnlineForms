@@ -1,0 +1,327 @@
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { X, Plus, Trash2, FileText, Building } from "lucide-react";
+
+const FIELD_TYPES = [
+  { value: "text", label: "Text" },
+  { value: "textarea", label: "Text area" },
+  { value: "number", label: "Number" },
+  { value: "date", label: "Date" },
+  { value: "select", label: "Dropdown (select)" },
+];
+
+function slugify(str) {
+  return (str || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+export default function BuildFormDialog({
+  departments,
+  onClose,
+  onSubmit,
+  initialTemplate = null,
+}) {
+  const isEdit = !!initialTemplate;
+
+  const [department_id, setDepartment_id] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [fields, setFields] = useState([
+    { name: "field_1", label: "Field 1", type: "text", required: true, options: null },
+  ]);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (initialTemplate) {
+      setDepartment_id(initialTemplate.department_id || "");
+      setName(initialTemplate.name || "");
+      setDescription(initialTemplate.description || "");
+      setFields(
+        (initialTemplate.fields || []).length > 0
+          ? initialTemplate.fields.map((f) => ({
+              name: f.name,
+              label: f.label || f.name,
+              type: f.type || "text",
+              required: f.required !== false,
+              options: f.options && f.options.length ? f.options : null,
+            }))
+          : [{ name: "field_1", label: "Field 1", type: "text", required: true, options: null }]
+      );
+    } else if (departments.length && !department_id) {
+      setDepartment_id(departments[0].id);
+    }
+  }, [initialTemplate, departments, department_id]);
+
+  const addField = () => {
+    const idx = fields.length + 1;
+    setFields((prev) => [
+      ...prev,
+      {
+        name: `field_${idx}`,
+        label: `Field ${idx}`,
+        type: "text",
+        required: true,
+        options: null,
+      },
+    ]);
+  };
+
+  const removeField = (index) => {
+    if (fields.length <= 1) return;
+    setFields((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateField = (index, key, value) => {
+    setFields((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [key]: value };
+      if (key === "label") {
+        next[index].name = slugify(value) || next[index].name;
+      }
+      return next;
+    });
+  };
+
+  const buildPayload = () => {
+    const fieldPayload = fields.map((f) => {
+      const out = {
+        name: f.name || slugify(f.label) || `field_${fields.indexOf(f) + 1}`,
+        label: (f.label || f.name).trim() || "Field",
+        type: f.type || "text",
+        required: f.required !== false,
+      };
+      if (f.type === "select" && f.options) {
+        const opts =
+          typeof f.options === "string"
+            ? f.options.split(",").map((s) => s.trim()).filter(Boolean)
+            : Array.isArray(f.options)
+              ? f.options
+              : [];
+        out.options = opts.length ? opts : ["Option 1", "Option 2"];
+      }
+      return out;
+    });
+
+    return {
+      department_id: department_id || (departments[0]?.id ?? ""),
+      name: name.trim(),
+      description: (description || "").trim(),
+      fields: fieldPayload,
+    };
+  };
+
+  const handleSubmit = async () => {
+    if (!name.trim()) return;
+    const payload = buildPayload();
+    if (!payload.fields.length) return;
+    setSubmitting(true);
+    try {
+      await onSubmit(payload, isEdit ? initialTemplate.id : null);
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      data-testid="build-form-dialog"
+    >
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up mx-4">
+        <div className="flex items-center justify-between p-5 border-b border-slate-200 flex-shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">
+              {isEdit ? "Edit Form" : "Build Form"}
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {isEdit
+                ? "Update form name, department, and fields"
+                : "Choose department, name the form, and add fields"}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-md">
+            <X className="w-5 h-5 text-slate-400" />
+          </button>
+        </div>
+
+        <ScrollArea className="flex-1 overflow-y-auto min-h-0">
+          <div className="p-5 space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-slate-700">Department *</Label>
+              <Select
+                value={department_id}
+                onValueChange={setDepartment_id}
+                disabled={isEdit}
+              >
+                <SelectTrigger data-testid="build-form-department" className="text-sm">
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      <span className="flex items-center gap-2">
+                        <Building className="w-3.5 h-3.5 text-slate-400" />
+                        {d.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-slate-700">Form name *</Label>
+              <Input
+                data-testid="build-form-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Office Supplies Request"
+                className="text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-slate-700">Description (optional)</Label>
+              <Input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of the form"
+                className="text-sm"
+              />
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Form fields
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addField}
+                  className="h-8 text-xs"
+                  data-testid="build-form-add-field"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add field
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {fields.map((field, index) => (
+                  <div
+                    key={index}
+                    className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-2"
+                    data-testid={`build-form-field-${index}`}
+                  >
+                    <div className="flex gap-2 flex-wrap items-end">
+                      <div className="flex-1 min-w-[120px] space-y-1">
+                        <Label className="text-xs text-slate-500">Label</Label>
+                        <Input
+                          value={field.label}
+                          onChange={(e) => updateField(index, "label", e.target.value)}
+                          placeholder="Field label"
+                          className="text-sm h-8"
+                        />
+                      </div>
+                      <div className="w-[130px] space-y-1">
+                        <Label className="text-xs text-slate-500">Type</Label>
+                        <Select
+                          value={field.type}
+                          onValueChange={(v) => updateField(index, "type", v)}
+                        >
+                          <SelectTrigger className="text-sm h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {FIELD_TYPES.map((t) => (
+                              <SelectItem key={t.value} value={t.value}>
+                                {t.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <label className="flex items-center gap-1.5 h-8 text-xs text-slate-600 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={field.required}
+                          onChange={(e) => updateField(index, "required", e.target.checked)}
+                          className="rounded border-slate-300"
+                        />
+                        Required
+                      </label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeField(index)}
+                        disabled={fields.length <= 1}
+                        className="h-8 w-8 p-0 text-slate-400 hover:text-red-600"
+                        data-testid={`build-form-remove-field-${index}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                    {field.type === "select" && (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">
+                          Options (comma-separated)
+                        </Label>
+                        <Input
+                          value={
+                            Array.isArray(field.options)
+                              ? field.options.join(", ")
+                              : field.options || ""
+                          }
+                          onChange={(e) =>
+                            updateField(
+                              index,
+                              "options",
+                              e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
+                            )
+                          }
+                          placeholder="Option 1, Option 2, Option 3"
+                          className="text-sm h-8"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+
+        <div className="p-4 border-t border-slate-200 flex items-center justify-end gap-2 flex-shrink-0">
+          <Button variant="outline" onClick={onClose} className="text-sm">
+            Cancel
+          </Button>
+          <Button
+            data-testid="build-form-submit"
+            onClick={handleSubmit}
+            disabled={!name.trim() || fields.length === 0 || submitting}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
+          >
+            {submitting ? "Saving..." : isEdit ? "Update Form" : "Create Form"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -108,7 +108,26 @@ async def update_template(template_id: str, req: TemplateUpdate, admin=Depends(r
 
 @templates_router.delete("/{template_id}")
 async def delete_template(template_id: str, admin=Depends(require_admin)):
-    result = await db.form_templates.update_one({"id": template_id}, {"$set": {"is_active": False}})
-    if result.matched_count == 0:
+    """
+    Permanently delete a form template.
+
+    A template can only be deleted if there are no pending/active requests
+    that still reference it. This keeps approval flows and history consistent.
+    """
+    # Block deletion if there are pending/active requests using this template
+    active_count = await db.requests.count_documents(
+        {
+            "form_template_id": template_id,
+            "status": {"$in": ["in_progress"]},
+        }
+    )
+    if active_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete form: there are pending or active requests using this form.",
+        )
+
+    result = await db.form_templates.delete_one({"id": template_id})
+    if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Template not found")
-    return {"message": "Template deactivated"}
+    return {"message": "Template deleted"}

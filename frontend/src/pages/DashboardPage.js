@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
+import { useReactiveRefresh } from "@/hooks/useReactiveRefresh";
 import {
   listRequests, listDepartments, listTemplates, getDashboardStats,
   listNotifications, markNotificationRead, markAllNotificationsRead,
@@ -118,6 +119,30 @@ export default function DashboardPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
+
+  // Reactive updates: poll and refetch when user returns to tab so UI updates
+  // without manual refresh (new requests, approvals, notifications).
+  const refreshRequestsAndData = useCallback(() => {
+    fetchRequests();
+    fetchData();
+  }, [fetchRequests, fetchData]);
+  useReactiveRefresh(refreshRequestsAndData, {
+    intervalMs: 15000,
+    refetchOnFocus: true,
+    enabled: !!user,
+  });
+
+  // When requests list is refreshed (e.g. by polling), refetch the selected
+  // request so the detail panel shows latest approval state without full reload.
+  const selectedIdRef = useRef(selectedRequest?.id);
+  selectedIdRef.current = selectedRequest?.id;
+  useEffect(() => {
+    const id = selectedIdRef.current;
+    if (!id) return;
+    getRequest(id)
+      .then((res) => setSelectedRequest((prev) => (prev?.id === id ? res.data : prev)))
+      .catch(() => {});
+  }, [requests]);
 
   const handleCreateRequest = async (data) => {
     try {

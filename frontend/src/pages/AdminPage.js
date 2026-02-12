@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
+import { useReactiveRefresh } from "@/hooks/useReactiveRefresh";
 import {
   listUsers,
   createUser,
@@ -10,6 +11,8 @@ import {
   listAllDepartments,
   listAllTemplates,
   updateTemplate,
+  createTemplate,
+  deleteTemplate,
   listApprovers,
   getDashboardStats,
 } from "@/lib/api";
@@ -27,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import BuildFormDialog from "@/components/BuildFormDialog";
 import {
   ArrowLeft,
   Users,
@@ -41,6 +45,7 @@ import {
   ChevronDown,
   ChevronUp,
   Search,
+  Wrench,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -67,6 +72,10 @@ export default function AdminPage() {
 
   // Template approver state
   const [expandedTemplate, setExpandedTemplate] = useState(null);
+
+  // Build / Edit form dialog
+  const [showBuildFormDialog, setShowBuildFormDialog] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -95,6 +104,14 @@ export default function AdminPage() {
     }
     fetchAll();
   }, [user, navigate, fetchAll]);
+
+  // Reactive updates: poll and refetch when user returns to tab so stats
+  // and lists update when other admins or users make changes.
+  useReactiveRefresh(fetchAll, {
+    intervalMs: 30000,
+    refetchOnFocus: true,
+    enabled: user?.role === "super_admin",
+  });
 
   // User management
   const handleSaveUser = async () => {
@@ -196,6 +213,53 @@ export default function AdminPage() {
       fetchAll();
     } catch (err) {
       toast.error("Failed to remove approver");
+    }
+  };
+
+  const handleBuildFormSubmit = async (payload, templateId) => {
+    try {
+      if (templateId) {
+        await updateTemplate(templateId, {
+          name: payload.name,
+          description: payload.description,
+          fields: payload.fields,
+        });
+        toast.success("Form updated");
+      } else {
+        await createTemplate(payload);
+        toast.success("Form created");
+      }
+      setShowBuildFormDialog(false);
+      setEditingTemplate(null);
+      fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to save form");
+      throw err;
+    }
+  };
+
+  const handleEditForm = (tmpl) => {
+    setEditingTemplate(tmpl);
+    setShowBuildFormDialog(true);
+  };
+
+  const handleDeleteForm = async (tmpl) => {
+    const confirmed = window.confirm(
+      `This will permanently delete the form "${tmpl.name}".\n\n` +
+        "- It will no longer be available for new requests.\n" +
+        "- You cannot undo this action.\n" +
+        "- Forms with pending or active requests cannot be deleted.\n\n" +
+        "Do you want to permanently delete this form?"
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteTemplate(tmpl.id);
+      toast.success("Form deleted");
+      setExpandedTemplate((prev) => (prev === tmpl.id ? null : prev));
+      fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to delete form");
     }
   };
 
@@ -537,15 +601,27 @@ export default function AdminPage() {
           {/* FORMS & APPROVERS TAB */}
           <TabsContent value="forms">
             <div className="bg-white rounded-lg border border-slate-200">
-              <div className="p-4 border-b border-slate-100">
-                <h3 className="text-sm font-semibold text-slate-800">
-                  Form Templates & Approver Assignment (
-                  {filteredTemplates.length})
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Expand a form to assign up to 3 sequential approvers
-                </p>
-              </div>
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Form Templates & Approver Assignment (
+                    {filteredTemplates.length})
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Expand a form to assign up to 3 sequential approvers
+                  </p>
+                </div>
+                <Button
+                  data-testid="build-forms-button"
+                  onClick={() => {
+                    setEditingTemplate(null);
+                    setShowBuildFormDialog(true);
+                  }}
+                  className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Wrench className="w-3.5 h-3.5 mr-1" /> Build Forms
+                </Button>
+                </div>
               <div className="flex-1 overflow-y-auto max-h-[32rem]">
                 {departments.map((dept) => {
                   const deptTemplates = filteredTemplates.filter(
@@ -568,46 +644,74 @@ export default function AdminPage() {
                             key={tmpl.id}
                             className="border-b border-slate-50"
                           >
-                            <button
-                              data-testid={`expand-template-${tmpl.id}`}
-                              className="w-full flex items-center justify-between p-3 px-4 hover:bg-slate-50/50 transition-colors text-left"
-                              onClick={() =>
-                                setExpandedTemplate(isExpanded ? null : tmpl.id)
-                              }
-                            >
-                              <div className="flex items-center gap-3">
-                                <FileText className="w-4 h-4 text-slate-400" />
-                                <div>
-                                  <div className="text-sm font-medium text-slate-700">
-                                    {tmpl.name}
-                                  </div>
-                                  <div className="text-[10px] text-slate-400">
-                                    {tmpl.fields?.length} fields ·{" "}
-                                    {chain.length} approver
-                                    {chain.length !== 1 ? "s" : ""}
+                            <div className="w-full flex items-center justify-between p-3 px-4 hover:bg-slate-50/50 transition-colors">
+                              <button
+                                data-testid={`expand-template-${tmpl.id}`}
+                                className="flex-1 flex items-center justify-between text-left min-w-0"
+                                onClick={() =>
+                                  setExpandedTemplate(isExpanded ? null : tmpl.id)
+                                }
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                  <div className="min-w-0">
+                                    <div className="text-sm font-medium text-slate-700">
+                                      {tmpl.name}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400">
+                                      {tmpl.fields?.length} fields ·{" "}
+                                      {chain.length} approver
+                                      {chain.length !== 1 ? "s" : ""}
+                                    </div>
                                   </div>
                                 </div>
+                                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                  {chain.length > 0 && (
+                                    <div className="flex -space-x-1">
+                                      {chain.map((a, i) => (
+                                        <div
+                                          key={i}
+                                          className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center border-2 border-white"
+                                        >
+                                          {a.user_name?.[0] || i + 1}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {isExpanded ? (
+                                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                                  )}
+                                </div>
+                              </button>
+                              <div className="flex items-center gap-0.5 flex-shrink-0 ml-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditForm(tmpl);
+                                  }}
+                                  className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-blue-600 transition-colors"
+                                  title="Edit form"
+                                  data-testid={`edit-template-${tmpl.id}`}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteForm(tmpl);
+                                  }}
+                                  className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-red-600 transition-colors"
+                                  title="Deactivate form"
+                                  data-testid={`delete-template-${tmpl.id}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
                               </div>
-                              <div className="flex items-center gap-2">
-                                {chain.length > 0 && (
-                                  <div className="flex -space-x-1">
-                                    {chain.map((a, i) => (
-                                      <div
-                                        key={i}
-                                        className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center border-2 border-white"
-                                      >
-                                        {a.user_name?.[0] || i + 1}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                {isExpanded ? (
-                                  <ChevronUp className="w-4 h-4 text-slate-400" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4 text-slate-400" />
-                                )}
-                              </div>
-                            </button>
+                            </div>
                             {isExpanded && (
                               <div className="px-4 pb-4 pt-1 bg-slate-50/50 animate-slide-up">
                                 <div className="space-y-2">
@@ -729,6 +833,18 @@ export default function AdminPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {showBuildFormDialog && (
+        <BuildFormDialog
+          departments={departments}
+          onClose={() => {
+            setShowBuildFormDialog(false);
+            setEditingTemplate(null);
+          }}
+          onSubmit={handleBuildFormSubmit}
+          initialTemplate={editingTemplate}
+        />
+      )}
     </div>
   );
 }
