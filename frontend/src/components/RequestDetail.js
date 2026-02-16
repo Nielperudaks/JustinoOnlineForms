@@ -10,9 +10,26 @@ import {
 import { format } from "date-fns";
 
 const STATUS_CONFIG = {
-  in_progress: { label: "In Progress", icon: Clock, cls: "bg-blue-50 text-blue-700 border-blue-200" },
-  approved: { label: "Approved", icon: CheckCircle2, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  rejected: { label: "Rejected", icon: XCircle, cls: "bg-red-50 text-red-700 border-red-200" },
+  in_progress: {
+    label: "In Progress",
+    icon: Clock,
+    cls: "bg-blue-50 text-blue-700 border-blue-200",
+  },
+  approved: {
+    label: "Approved",
+    icon: CheckCircle2,
+    cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  rejected: {
+    label: "Rejected",
+    icon: XCircle,
+    cls: "bg-red-50 text-red-700 border-red-200",
+  },
+  cancelled: {
+    label: "Cancelled",
+    icon: XCircle,
+    cls: "bg-slate-100 text-slate-500 border-slate-300",
+  },
 };
 
 const PRIORITY_COLORS = {
@@ -32,6 +49,7 @@ function ApprovalChain({ approvals }) {
           const isApproved = a.status === "approved";
           const isRejected = a.status === "rejected";
           const isPending = a.status === "pending";
+          const isCancelled = a.status === "cancelled";
           const isWaiting = a.status === "waiting";
           return (
             <React.Fragment key={i}>
@@ -41,6 +59,7 @@ function ApprovalChain({ approvals }) {
                   isApproved ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
                   isRejected ? "bg-red-50 border-red-200 text-red-700" :
                   isPending ? "bg-blue-50 border-blue-200 text-blue-700 animate-pulse-slow" :
+                  isCancelled ? "bg-slate-50 border-slate-200 text-slate-400" :
                   "bg-slate-50 border-slate-200 text-slate-400"
                 }`}
               >
@@ -48,10 +67,13 @@ function ApprovalChain({ approvals }) {
                   isApproved ? "bg-emerald-500 text-white" :
                   isRejected ? "bg-red-500 text-white" :
                   isPending ? "bg-blue-500 text-white" :
+                  isCancelled ? "bg-slate-300 text-white" :
                   "bg-slate-300 text-white"
                 }`}>
                   {isApproved ? <CheckCircle2 className="w-3.5 h-3.5" /> :
                    isRejected ? <XCircle className="w-3.5 h-3.5" /> :
+                   isCancelled ? <XCircle className="w-3.5 h-3.5" /> :
+                   isPending ? <Clock className="w-3.5 h-3.5" /> :
                    a.step}
                 </div>
                 <div>
@@ -81,9 +103,16 @@ function ApprovalChain({ approvals }) {
   );
 }
 
-export default function RequestDetail({ request, currentUser, onAction, departments }) {
+export default function RequestDetail({
+  request,
+  currentUser,
+  onAction,
+  onCancel,
+  departments,
+}) {
   const [comments, setComments] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   if (!request) {
     return (
@@ -101,14 +130,37 @@ export default function RequestDetail({ request, currentUser, onAction, departme
   const StatusIcon = statusCfg.icon;
   const dept = departments?.find(d => d.id === request.department_id);
 
-  const canApprove = request.status === "in_progress" &&
-    request.approvals?.some(a => a.approver_id === currentUser?.id && a.status === "pending");
+  const canApprove =
+    request.status === "in_progress" &&
+    request.approvals?.some(
+      (a) => a.approver_id === currentUser?.id && a.status === "pending",
+    );
+
+  const canCancel =
+    request.status === "in_progress" && currentUser?.id === request.requester_id;
 
   const handleAction = async (action) => {
     setActionLoading(true);
     await onAction(request.id, action, comments);
     setComments("");
     setActionLoading(false);
+  };
+
+  const handleCancel = async () => {
+    if (!onCancel) return;
+    // Simple confirm to avoid accidental cancellations
+    // eslint-disable-next-line no-restricted-globals
+    const confirmed = window.confirm(
+      "Are you sure you want to cancel this request? Approvers will no longer be able to act on it.",
+    );
+    if (!confirmed) return;
+
+    setCancelLoading(true);
+    try {
+      await onCancel(request.id);
+    } finally {
+      setCancelLoading(false);
+    }
   };
 
   const formattedDate = request.created_at
@@ -170,12 +222,19 @@ export default function RequestDetail({ request, currentUser, onAction, departme
         <Separator className="my-6" />
 
         {/* Approval Chain */}
-        <ApprovalChain approvals={request.approvals} />
+        {request.status !== "cancelled" && (
+          <ApprovalChain approvals={request.approvals} />
+        )}
 
         {/* Action buttons for current approver */}
         {canApprove && (
-          <div className="mt-6 p-5 border border-blue-200 bg-blue-50/30 rounded-lg" data-testid="approval-actions">
-            <h4 className="text-sm font-semibold text-slate-800 mb-3">Your Action Required</h4>
+          <div
+            className="mt-6 p-5 border border-blue-200 bg-blue-50/30 rounded-lg"
+            data-testid="approval-actions"
+          >
+            <h4 className="text-sm font-semibold text-slate-800 mb-3">
+              Your Action Required
+            </h4>
             <Textarea
               data-testid="approval-comments"
               placeholder="Add comments (optional)..."
@@ -205,6 +264,30 @@ export default function RequestDetail({ request, currentUser, onAction, departme
                 Reject
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* Cancel for requester while pending */}
+        {canCancel && (
+          <div className="mt-4 p-4 border border-slate-200 bg-slate-50/40 rounded-lg">
+            <h4 className="text-sm font-semibold text-slate-800 mb-2">
+              Cancel this request
+            </h4>
+            <p className="text-xs text-slate-500 mb-3">
+              You can cancel this request while it is still in progress. Once
+              cancelled, approvers will no longer be able to approve or reject
+              it.
+            </p>
+            <Button
+              data-testid="cancel-request-button"
+              variant="outline"
+              className="border-slate-300 text-slate-700 hover:bg-slate-100"
+              disabled={cancelLoading}
+              onClick={handleCancel}
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              {cancelLoading ? "Cancelling..." : "Cancel Request"}
+            </Button>
           </div>
         )}
       </div>

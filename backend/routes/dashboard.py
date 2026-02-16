@@ -14,6 +14,7 @@ async def get_dashboard_stats(user=Depends(get_current_user)):
         pending = await db.requests.count_documents({"status": "in_progress"})
         approved = await db.requests.count_documents({"status": "approved"})
         rejected = await db.requests.count_documents({"status": "rejected"})
+        cancelled = await db.requests.count_documents({"status": "cancelled"})
         total_users = await db.users.count_documents({})
         total_templates = await db.form_templates.count_documents({"is_active": True})
     else:
@@ -21,6 +22,7 @@ async def get_dashboard_stats(user=Depends(get_current_user)):
         pending = await db.requests.count_documents({"requester_id": uid, "status": "in_progress"})
         approved = await db.requests.count_documents({"requester_id": uid, "status": "approved"})
         rejected = await db.requests.count_documents({"requester_id": uid, "status": "rejected"})
+        cancelled = await db.requests.count_documents({"requester_id": uid, "status": "cancelled"})
         total_users = 0
         total_templates = 0
 
@@ -36,6 +38,7 @@ async def get_dashboard_stats(user=Depends(get_current_user)):
         "pending_requests": pending,
         "approved_requests": approved,
         "rejected_requests": rejected,
+        "cancelled_requests": cancelled,
         "my_pending_approvals": my_pending_approvals,
         "unread_notifications": unread_notifs,
         "total_users": total_users,

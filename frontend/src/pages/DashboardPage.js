@@ -2,11 +2,20 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
-import { useReactiveRefresh } from "@/hooks/useReactiveRefresh";
+import { useLiveUpdates } from "@/hooks/useLiveUpdates";
+
 import {
-  listRequests, listDepartments, listTemplates, getDashboardStats,
-  listNotifications, markNotificationRead, markAllNotificationsRead,
-  createRequest, actionRequest, getRequest
+  listRequests,
+  listDepartments,
+  listTemplates,
+  getDashboardStats,
+  listNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  createRequest,
+  actionRequest,
+  getRequest,
+  cancelRequest,
 } from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 import RequestList from "@/components/RequestList";
@@ -43,37 +52,42 @@ export default function DashboardPage() {
   const maxListWidth = 480;
   const isResizingRef = useRef(false);
 
-  const handleResizeStart = useCallback((e) => {
-    e.preventDefault();
-    isResizingRef.current = true;
-    const startX = e.clientX;
-    const startWidth = listWidth;
+  const handleResizeStart = useCallback(
+    (e) => {
+      e.preventDefault();
+      isResizingRef.current = true;
+      const startX = e.clientX;
+      const startWidth = listWidth;
 
-    const onMouseMove = (moveEvent) => {
-      const delta = moveEvent.clientX - startX;
-      setListWidth((prev) => Math.min(maxListWidth, Math.max(minListWidth, startWidth + delta)));
-    };
+      const onMouseMove = (moveEvent) => {
+        const delta = moveEvent.clientX - startX;
+        setListWidth((prev) =>
+          Math.min(maxListWidth, Math.max(minListWidth, startWidth + delta)),
+        );
+      };
 
-    const onMouseUp = () => {
-      isResizingRef.current = false;
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
+      const onMouseUp = () => {
+        isResizingRef.current = false;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
 
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  }, [listWidth, minListWidth, maxListWidth]);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    },
+    [listWidth, minListWidth, maxListWidth],
+  );
 
   const fetchData = useCallback(async () => {
     try {
       const [deptRes, statsRes, notifRes] = await Promise.all([
         listDepartments(),
         getDashboardStats(),
-        listNotifications({ limit: 20 })
+        listNotifications({ limit: 20 }),
       ]);
       setDepartments(deptRes.data);
       setStats(statsRes.data);
@@ -94,6 +108,7 @@ export default function DashboardPage() {
       if (activeFilter === "pending") params.status = "in_progress";
       if (activeFilter === "approved") params.status = "approved";
       if (activeFilter === "rejected") params.status = "rejected";
+      if (activeFilter === "cancelled") params.status = "cancelled";
       if (searchQuery) params.search = searchQuery;
 
       const res = await listRequests(params);
@@ -116,33 +131,79 @@ export default function DashboardPage() {
     }
   }, [selectedDept]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { fetchRequests(); }, [fetchRequests]);
-  useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
-
-  // Reactive updates: poll and refetch when user returns to tab so UI updates
-  // without manual refresh (new requests, approvals, notifications).
-  const refreshRequestsAndData = useCallback(() => {
-    fetchRequests();
+  useEffect(() => {
     fetchData();
-  }, [fetchRequests, fetchData]);
-  useReactiveRefresh(refreshRequestsAndData, {
-    intervalMs: 15000,
-    refetchOnFocus: true,
+  }, [fetchData]);
+  useEffect(() => {
+    fetchRequests();
+  }, [fetchRequests]);
+  useEffect(() => {
+    fetchTemplates();
+  }, [fetchTemplates]);
+
+  useLiveUpdates({
     enabled: !!user,
+    onEvent: ({ event, payload }) => {
+      switch (event) {
+        case "REQUEST_CREATED":
+        case "REQUEST_UPDATED":
+        case "REQUEST_APPROVED":
+        case "REQUEST_REJECTED":
+        case "REQUEST_CANCELLED":
+        case "REQUEST_STATE_CHANGED": {
+          // Refresh request lists and stats
+          fetchRequests();
+          fetchData();
+
+          // If the currently opened request changed, refresh it
+          if (selectedRequest?.id === payload?.request_id) {
+            getRequest(payload.request_id)
+              .then((res) => setSelectedRequest(res.data))
+              .catch(() => {});
+          }
+          break;
+        }
+
+        case "NOTIFICATION_CREATED": {
+          if (payload?.user_id === user?.id) {
+            listNotifications({ limit: 20 }).then((res) => {
+              setNotifications(res.data.items);
+              setUnreadCount(res.data.unread_count);
+            });
+            fetchData(); // unread badge in dashboard stats
+          }
+          break;
+        }
+
+        case "NOTIFICATION_READ":
+        case "NOTIFICATIONS_CLEARED": {
+          if (payload?.user_id === user?.id) {
+            listNotifications({ limit: 20 }).then((res) => {
+              setNotifications(res.data.items);
+              setUnreadCount(res.data.unread_count);
+            });
+            fetchData();
+          }
+          break;
+        }
+
+        default:
+          break;
+      }
+    },
   });
 
   // When requests list is refreshed (e.g. by polling), refetch the selected
   // request so the detail panel shows latest approval state without full reload.
-  const selectedIdRef = useRef(selectedRequest?.id);
-  selectedIdRef.current = selectedRequest?.id;
-  useEffect(() => {
-    const id = selectedIdRef.current;
-    if (!id) return;
-    getRequest(id)
-      .then((res) => setSelectedRequest((prev) => (prev?.id === id ? res.data : prev)))
-      .catch(() => {});
-  }, [requests]);
+  // const selectedIdRef = useRef(selectedRequest?.id);
+  // selectedIdRef.current = selectedRequest?.id;
+  // useEffect(() => {
+  //   const id = selectedIdRef.current;
+  //   if (!id) return;
+  //   getRequest(id)
+  //     .then((res) => setSelectedRequest((prev) => (prev?.id === id ? res.data : prev)))
+  //     .catch(() => {});
+  // }, [requests]);
 
   const handleCreateRequest = async (data) => {
     try {
@@ -168,6 +229,20 @@ export default function DashboardPage() {
     }
   };
 
+  const handleCancel = async (requestId) => {
+    try {
+      const res = await cancelRequest(requestId);
+      toast.success("Request cancelled successfully");
+      setSelectedRequest(res.data);
+      fetchRequests();
+      fetchData();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.detail || "Failed to cancel request",
+      );
+    }
+  };
+
   const handleSelectRequest = async (req) => {
     try {
       const res = await getRequest(req.id);
@@ -179,13 +254,15 @@ export default function DashboardPage() {
 
   const handleMarkRead = async (id) => {
     await markNotificationRead(id);
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
-    setUnreadCount(prev => Math.max(0, prev - 1));
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
   };
 
   const handleMarkAllRead = async () => {
     await markAllNotificationsRead();
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     setUnreadCount(0);
   };
 
@@ -195,19 +272,31 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="h-screen flex overflow-hidden bg-white" data-testid="dashboard-page">
+    <div
+      className="h-screen flex overflow-hidden bg-white"
+      data-testid="dashboard-page"
+    >
       {/* Mobile sidebar overlay */}
       {showMobileSidebar && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowMobileSidebar(false)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowMobileSidebar(false)}
+          />
           <div className="relative w-64 h-full">
             <Sidebar
               user={user}
               departments={departments}
               selectedDept={selectedDept}
-              setSelectedDept={(d) => { setSelectedDept(d); setShowMobileSidebar(false); }}
+              setSelectedDept={(d) => {
+                setSelectedDept(d);
+                setShowMobileSidebar(false);
+              }}
               activeFilter={activeFilter}
-              setActiveFilter={(f) => { setActiveFilter(f); setShowMobileSidebar(false); }}
+              setActiveFilter={(f) => {
+                setActiveFilter(f);
+                setShowMobileSidebar(false);
+              }}
               stats={stats}
               onClose={() => setShowMobileSidebar(false)}
             />
@@ -241,11 +330,17 @@ export default function DashboardPage() {
               <Menu className="w-5 h-5 text-slate-600" />
             </button>
             <h2 className="text-sm font-semibold text-slate-800">
-              {activeFilter === "all" ? "All Requests" :
-               activeFilter === "my_requests" ? "My Requests" :
-               activeFilter === "my_approvals" ? "Pending My Approval" :
-               activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1)}
-              <span className="ml-2 text-xs text-slate-400 font-normal">({totalRequests})</span>
+              {activeFilter === "all"
+                ? "All Requests"
+                : activeFilter === "my_requests"
+                  ? "My Requests"
+                  : activeFilter === "my_approvals"
+                    ? "Pending My Approval"
+                    : activeFilter.charAt(0).toUpperCase() +
+                      activeFilter.slice(1)}
+              <span className="ml-2 text-xs text-slate-400 font-normal">
+                ({totalRequests})
+              </span>
             </h2>
           </div>
           <div className="flex items-center gap-2">
@@ -277,7 +372,9 @@ export default function DashboardPage() {
                   onClose={() => setShowNotifications(false)}
                   onSelectRequest={(notif) => {
                     if (notif.request_id) {
-                      const req = requests.find(r => r.id === notif.request_id);
+                      const req = requests.find(
+                        (r) => r.id === notif.request_id,
+                      );
                       if (req) handleSelectRequest(req);
                     }
                     setShowNotifications(false);
@@ -334,6 +431,7 @@ export default function DashboardPage() {
               request={selectedRequest}
               currentUser={user}
               onAction={handleAction}
+              onCancel={handleCancel}
               departments={departments}
             />
           </div>

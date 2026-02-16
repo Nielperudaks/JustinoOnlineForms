@@ -8,6 +8,7 @@ const STATUS_CONFIG = {
   in_progress: { label: "In Progress", icon: Clock, cls: "bg-blue-50 text-blue-700 border-blue-200" },
   approved: { label: "Approved", icon: CheckCircle2, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   rejected: { label: "Rejected", icon: XCircle, cls: "bg-red-50 text-red-700 border-red-200" },
+  cancelled: { label: "Cancelled", icon: XCircle, cls: "bg-slate-100 text-slate-500 border-slate-300" },
 };
 
 const PRIORITY_CONFIG = {

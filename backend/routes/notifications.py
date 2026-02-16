@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from utils.helpers import db, get_current_user
 import uuid
 from datetime import datetime, timezone
+from realtime import manager
 
 notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -29,6 +30,15 @@ async def mark_read(notification_id: str, user=Depends(get_current_user)):
         {"id": notification_id, "user_id": user["id"]},
         {"$set": {"is_read": True}}
     )
+
+    await manager.broadcast(
+        event="NOTIFICATION_READ",
+        payload={
+            "user_id": user["id"],
+            "notification_id": notification_id
+        }
+    )
+
     return {"message": "Marked as read"}
 
 
@@ -38,4 +48,12 @@ async def mark_all_read(user=Depends(get_current_user)):
         {"user_id": user["id"], "is_read": False},
         {"$set": {"is_read": True}}
     )
+
+    await manager.broadcast(
+        event="NOTIFICATIONS_CLEARED",
+        payload={
+            "user_id": user["id"]
+        }
+    )
+
     return {"message": "All notifications marked as read"}

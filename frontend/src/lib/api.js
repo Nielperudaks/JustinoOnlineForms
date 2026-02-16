@@ -54,6 +54,7 @@ export const listRequests = (params) => api.get('/requests', { params });
 export const getRequest = (id) => api.get(`/requests/${id}`);
 export const createRequest = (data) => api.post('/requests', data);
 export const actionRequest = (id, data) => api.post(`/requests/${id}/action`, data);
+export const cancelRequest = (id) => api.post(`/requests/${id}/cancel`);
 
 // Notifications
 export const listNotifications = (params) => api.get('/notifications', { params });

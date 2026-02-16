@@ -1,8 +1,14 @@
 import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  LayoutDashboard, FileText, Clock, CheckCircle2, XCircle,
-  ClipboardCheck, ChevronRight, X
+  LayoutDashboard,
+  FileText,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  ClipboardCheck,
+  ChevronRight,
+  X,
 } from "lucide-react";
 
 const FILTER_ITEMS = [
@@ -12,6 +18,7 @@ const FILTER_ITEMS = [
   { key: "pending", label: "In Progress", icon: Clock },
   { key: "approved", label: "Approved", icon: CheckCircle2 },
   { key: "rejected", label: "Rejected", icon: XCircle },
+  { key: "cancelled", label: "Cancelled", icon: XCircle },
 ];
 
 export default function Sidebar({
@@ -55,11 +62,20 @@ export default function Sidebar({
           </div>
           {FILTER_ITEMS.map((item) => {
             const Icon = item.icon;
-            const count = item.key === "my_approvals" ? stats?.my_pending_approvals :
-                         item.key === "pending" ? stats?.pending_requests :
-                         item.key === "approved" ? stats?.approved_requests :
-                         item.key === "rejected" ? stats?.rejected_requests :
-                         item.key === "all" ? stats?.total_requests : null;
+            const count =
+              item.key === "my_approvals"
+                ? stats?.my_pending_approvals
+                : item.key === "pending"
+                  ? stats?.pending_requests
+                  : item.key === "approved"
+                    ? stats?.approved_requests
+                    : item.key === "rejected"
+                      ? stats?.rejected_requests
+                      : item.key === "cancelled"
+                        ? stats?.cancelled_requests
+                        : item.key === "all"
+                          ? stats?.total_requests
+                          : null;
             return (
               <button
                 key={item.key}

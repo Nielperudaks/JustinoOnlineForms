@@ -4,6 +4,7 @@ from typing import Optional, List
 from utils.helpers import db, get_current_user, send_email_notification
 import uuid
 from datetime import datetime, timezone
+from realtime import manager
 
 requests_router = APIRouter(prefix="/requests", tags=["requests"])
 
@@ -133,6 +134,25 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
                 f"Approval Required: {request_number} - {req.title}",
                 f"<h3>New Request Pending Your Approval</h3><p><b>{request_number}</b> - {req.title}</p><p>From: {user['name']}</p><p>Please log in to review and approve.</p>"
             )
+            await manager.broadcast(
+                event="NOTIFICATION_CREATED",
+                payload={
+                    "user_id": notif["user_id"],
+                    "notification_id": notif["id"],
+                    "type": notif["type"]
+                }
+            )
+
+    await manager.broadcast(
+        event="REQUEST_CREATED",
+        payload={
+            "request_id": result["id"],
+            "request_number": result["request_number"],
+            "department_id": result["department_id"],
+            "requester_id": result["requester_id"],
+            "status": result["status"]
+        }
+    )
 
     return result
 
@@ -189,6 +209,24 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
             f"Request Rejected: {req['request_number']}",
             f"<h3>Request Rejected</h3><p><b>{req['request_number']}</b> - {req['title']}</p><p>Rejected by: {user['name']}</p><p>Comments: {action.comments or 'None'}</p>"
         )
+        await manager.broadcast(
+            event="NOTIFICATION_CREATED",
+            payload={
+                "user_id": notif["user_id"],
+                "notification_id": notif["id"],
+                "type": notif["type"]
+            }
+        )
+        await manager.broadcast(
+            event="REQUEST_REJECTED",
+            payload={
+                "request_id": request_id,
+                "request_number": req["request_number"],
+                "acted_by": user["id"],
+                "department_id": req["department_id"],
+                "status": "rejected"
+            }
+        )
 
     elif action.action == "approve":
         for a in approvals:
@@ -229,6 +267,25 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                         f"Approval Required (Step {next_step}): {req['request_number']}",
                         f"<h3>Approval Required</h3><p><b>{req['request_number']}</b> - {req['title']}</p><p>Step {next_step} of {req['total_approval_steps']}</p>"
                     )
+                    await manager.broadcast(
+                        event="NOTIFICATION_CREATED",
+                        payload={
+                            "user_id": notif["user_id"],
+                            "notification_id": notif["id"],
+                            "type": notif["type"]
+                        }
+                    )
+                    await manager.broadcast(
+                        event="REQUEST_UPDATED",
+                        payload={
+                            "request_id": request_id,
+                            "request_number": req["request_number"],
+                            "current_step": next_step,
+                            "status": "in_progress",
+                            "department_id": req["department_id"]
+                        }
+                    )
+
         else:
             await db.requests.update_one({"id": request_id}, {"$set": {
                 "approvals": approvals,
@@ -251,8 +308,36 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                 f"Request Approved: {req['request_number']}",
                 f"<h3>Request Approved</h3><p><b>{req['request_number']}</b> - {req['title']}</p><p>All approvers have signed off.</p>"
             )
+            await manager.broadcast(
+                event="NOTIFICATION_CREATED",
+                payload={
+                    "user_id": notif["user_id"],
+                    "notification_id": notif["id"],
+                    "type": notif["type"]
+                }
+            )
+            await manager.broadcast(
+                event="REQUEST_APPROVED",
+                payload={
+                    "request_id": request_id,
+                    "request_number": req["request_number"],
+                    "department_id": req["department_id"],
+                    "status": "approved"
+                }
+            )
+
     else:
         raise HTTPException(status_code=400, detail="Invalid action. Use 'approve' or 'reject'")
 
     updated = await db.requests.find_one({"id": request_id}, {"_id": 0})
+
+    await manager.broadcast(
+    event="REQUEST_STATE_CHANGED",
+        payload={
+            "request_id": updated["id"],
+            "status": updated["status"],
+            "current_step": updated.get("current_approval_step", 0)
+        }
+    )
+
     return updated

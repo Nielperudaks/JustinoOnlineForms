@@ -5,6 +5,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
+from fastapi import WebSocket
+from realtime import manager
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -38,7 +40,7 @@ api_router.include_router(dashboard_router)
 
 @api_router.get("/")
 async def root():
-    return {"message": "Workflow Bridge API"}
+    return {"message": "Justino Online Forms API"}
 
 app.include_router(api_router)
 
@@ -58,3 +60,13 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await manager.connect(ws)
+    try:
+        while True:
+            await ws.receive_text()  # keep alive
+    except:
+        manager.disconnect(ws)
+
