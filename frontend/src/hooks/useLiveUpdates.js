@@ -6,7 +6,7 @@ export function useLiveUpdates({ onEvent, enabled = true }) {
   useEffect(() => {
     if (!enabled) return
 
-    const ws = new WebSocket("ws://api.justinocorp.com/ws")
+    const ws = new WebSocket("ws://api.justinocorp.com/wss")
     socketRef.current = ws
 
     ws.onmessage = (event) => {
