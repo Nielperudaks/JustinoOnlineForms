@@ -37,7 +37,7 @@ export default function NotificationPanel({ notifications, onMarkRead, onMarkAll
           <Check className="w-3 h-3 mr-1" /> Mark all read
         </Button>
       </div>
-      <ScrollArea className="max-h-80">
+      <div className="max-h-80 overflow-y-auto">
         {notifications.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-400">No notifications</div>
         ) : (
@@ -74,7 +74,7 @@ export default function NotificationPanel({ notifications, onMarkRead, onMarkAll
             );
           })
         )}
-      </ScrollArea>
+      </div>
       <div className="p-3 border-t border-slate-100 text-center">
         <button onClick={onClose} className="text-xs text-slate-500 hover:text-slate-700">Close</button>
       </div>
