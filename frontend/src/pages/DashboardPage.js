@@ -39,6 +39,8 @@ export default function DashboardPage() {
 
   const [selectedDept, setSelectedDept] = useState(null);
   const [activeFilter, setActiveFilter] = useState("all");
+
+  const canCreateRequest = user?.role === "requestor" || user?.role === "both" || user?.role === "super_admin";
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -102,7 +104,9 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       const params = { limit: 100 };
-      if (selectedDept) params.department_id = selectedDept;
+      const isSuperAdmin = user?.role === "super_admin";
+      // Only super admin can filter by department
+      if (isSuperAdmin && selectedDept) params.department_id = selectedDept;
       if (activeFilter === "my_requests") params.my_requests = true;
       if (activeFilter === "my_approvals") params.my_approvals = true;
       if (activeFilter === "pending") params.status = "in_progress";
@@ -119,7 +123,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedDept, activeFilter, searchQuery]);
+  }, [user?.role, selectedDept, activeFilter, searchQuery]);
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -130,6 +134,16 @@ export default function DashboardPage() {
       console.error("Fetch templates error:", err);
     }
   }, [selectedDept]);
+
+  // Reset activeFilter if current filter is not allowed for user's role
+  useEffect(() => {
+    if (!user?.role) return;
+    const role = user.role;
+    const canUseMyRequests = role === "requestor" || role === "both" || role === "super_admin";
+    const canUseMyApprovals = role === "approver" || role === "both" || role === "super_admin";
+    if (activeFilter === "my_requests" && !canUseMyRequests) setActiveFilter("all");
+    if (activeFilter === "my_approvals" && !canUseMyApprovals) setActiveFilter("all");
+  }, [user?.role, activeFilter]);
 
   useEffect(() => {
     fetchData();
@@ -344,13 +358,15 @@ export default function DashboardPage() {
             </h2>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              data-testid="new-request-button"
-              onClick={() => setShowCreateDialog(true)}
-              className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" /> New Request
-            </Button>
+            {canCreateRequest && (
+              <Button
+                data-testid="new-request-button"
+                onClick={() => setShowCreateDialog(true)}
+                className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" /> New Request
+              </Button>
+            )}
             <div className="relative">
               <button
                 data-testid="notifications-button"

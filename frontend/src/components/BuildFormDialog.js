@@ -106,7 +106,7 @@ export default function BuildFormDialog({
       if (f.type === "select" && f.options) {
         const opts =
           typeof f.options === "string"
-            ? f.options.split(",").map((s) => s.trim()).filter(Boolean)
+            ? f.options.split("\n").map((s) => s.trim()).filter(Boolean)
             : Array.isArray(f.options)
               ? f.options
               : [];
@@ -281,23 +281,22 @@ export default function BuildFormDialog({
                     {field.type === "select" && (
                       <div className="space-y-1">
                         <Label className="text-xs text-slate-500">
-                          Options (comma-separated)
+                          Options (one per line; commas allowed in text)
                         </Label>
-                        <Input
+                        <textarea
                           value={
                             Array.isArray(field.options)
-                              ? field.options.join(", ")
-                              : field.options || ""
+                              ? field.options.join("\n")
+                              : typeof field.options === "string"
+                                ? field.options
+                                : ""
                           }
                           onChange={(e) =>
-                            updateField(
-                              index,
-                              "options",
-                              e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
-                            )
+                            updateField(index, "options", e.target.value)
                           }
-                          placeholder="Option 1, Option 2, Option 3"
-                          className="text-sm h-8"
+                          placeholder={"Option 1\nOption 2\nOption 3"}
+                          className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          rows={3}
                         />
                       </div>
                     )}

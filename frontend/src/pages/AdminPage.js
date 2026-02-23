@@ -107,11 +107,11 @@ export default function AdminPage() {
 
   // Reactive updates: poll and refetch when user returns to tab so stats
   // and lists update when other admins or users make changes.
-  useReactiveRefresh(fetchAll, {
-    intervalMs: 30000,
-    refetchOnFocus: true,
-    enabled: user?.role === "super_admin",
-  });
+  // useReactiveRefresh(fetchAll, {
+  //   intervalMs: 30000,
+  //   refetchOnFocus: true,
+  //   enabled: user?.role === "super_admin",
+  // });
 
   // User management
   const handleSaveUser = async () => {

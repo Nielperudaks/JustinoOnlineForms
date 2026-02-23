@@ -21,10 +21,24 @@ const FILTER_ITEMS = [
   { key: "cancelled", label: "Cancelled", icon: XCircle },
 ];
 
+function canRequest(role) {
+  return role === "requestor" || role === "both" || role === "super_admin";
+}
+
+function canApprove(role) {
+  return role === "approver" || role === "both" || role === "super_admin";
+}
+
 export default function Sidebar({
   user, departments, selectedDept, setSelectedDept,
   activeFilter, setActiveFilter, stats, onClose
 }) {
+  const role = user?.role;
+  const visibleFilters = FILTER_ITEMS.filter((item) => {
+    if (item.key === "my_requests") return canRequest(role);
+    if (item.key === "my_approvals") return canApprove(role);
+    return true;
+  });
   return (
     <div className="h-full bg-slate-900 flex flex-col" data-testid="sidebar">
       {/* Header */}
@@ -60,7 +74,7 @@ export default function Sidebar({
           <div className="text-slate-500 text-[10px] uppercase tracking-widest font-semibold px-3 mb-2">
             Filters
           </div>
-          {FILTER_ITEMS.map((item) => {
+          {visibleFilters.map((item) => {
             const Icon = item.icon;
             const count =
               item.key === "my_approvals"
@@ -95,24 +109,26 @@ export default function Sidebar({
           })}
         </div>
 
-        {/* Departments */}
-        <div className="p-3 pt-0">
-          <div className="text-slate-500 text-[10px] uppercase tracking-widest font-semibold px-3 mb-2 mt-2">
-            Departments
+        {/* Departments - only visible to super admin */}
+        {user?.role === "super_admin" && (
+          <div className="p-3 pt-0">
+            <div className="text-slate-500 text-[10px] uppercase tracking-widest font-semibold px-3 mb-2 mt-2">
+              Departments
+            </div>
+            {departments.map((dept) => (
+              <button
+                key={dept.id}
+                data-testid={`dept-${dept.code}`}
+                className={`sidebar-item w-full ${selectedDept === dept.id ? "active" : ""}`}
+                onClick={() => { setSelectedDept(dept.id); setActiveFilter("all"); }}
+              >
+                <div className="w-2 h-2 rounded-full bg-slate-600 flex-shrink-0" />
+                <span className="flex-1 text-left truncate">{dept.name}</span>
+                <ChevronRight className="w-3 h-3 text-slate-600" />
+              </button>
+            ))}
           </div>
-          {departments.map((dept) => (
-            <button
-              key={dept.id}
-              data-testid={`dept-${dept.code}`}
-              className={`sidebar-item w-full ${selectedDept === dept.id ? "active" : ""}`}
-              onClick={() => { setSelectedDept(dept.id); setActiveFilter("all"); }}
-            >
-              <div className="w-2 h-2 rounded-full bg-slate-600 flex-shrink-0" />
-              <span className="flex-1 text-left truncate">{dept.name}</span>
-              <ChevronRight className="w-3 h-3 text-slate-600" />
-            </button>
-          ))}
-        </div>
+        )}
       </ScrollArea>
 
       {/* Stats footer */}

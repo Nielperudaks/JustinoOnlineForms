@@ -2,19 +2,26 @@ import { useEffect, useRef } from "react"
 
 export function useLiveUpdates({ onEvent, enabled = true }) {
   const socketRef = useRef(null)
+  const onEventRef = useRef(onEvent)
+  onEventRef.current = onEvent
 
   useEffect(() => {
     if (!enabled) return
 
-    const ws = new WebSocket(
-      `wss://${process.env.REACT_APP_BACKEND_URL.replace('https://', '')}/ws`
-    );
+    const baseUrl = process.env.REACT_APP_BACKEND_URL || ""
+    const wsUrl = baseUrl.startsWith("https")
+      ? `wss://${baseUrl.replace("https://", "")}/ws`
+      : baseUrl.startsWith("http")
+        ? `ws://${baseUrl.replace("http://", "")}/ws`
+        : `ws://${window.location.hostname}:8000/ws`
+
+    const ws = new WebSocket(wsUrl)
     socketRef.current = ws
 
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data)
-        onEvent?.(message)
+        onEventRef.current?.(message)
       } catch {}
     }
 
@@ -24,5 +31,5 @@ export function useLiveUpdates({ onEvent, enabled = true }) {
     return () => {
       ws.close()
     }
-  }, [enabled, onEvent])
+  }, [enabled])
 }

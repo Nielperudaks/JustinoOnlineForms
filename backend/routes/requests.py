@@ -49,6 +49,17 @@ async def list_requests(
         }
         query["status"] = "in_progress"
 
+    # Non-super-admin: restrict to user-related requests (their requests + any request they're in the approval chain)
+    role = user.get("role", "")
+    if role != "super_admin":
+        user_scope = {
+            "$or": [
+                {"requester_id": user["id"]},
+                {"approvals": {"$elemMatch": {"approver_id": user["id"]}}}  # in chain: pending, approved, or rejected
+            ]
+        }
+        query = {"$and": [query, user_scope]} if query else user_scope
+
     total = await db.requests.count_documents(query)
     skip = (page - 1) * limit
     reqs = await db.requests.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
@@ -65,11 +76,21 @@ async def get_request(request_id: str, user=Depends(get_current_user)):
     req = await db.requests.find_one({"id": request_id}, {"_id": 0})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    # Non-super-admin can only view requests they created or are in the approval chain
+    if user.get("role") != "super_admin":
+        uid = user["id"]
+        is_requester = req.get("requester_id") == uid
+        is_approver = any(a.get("approver_id") == uid for a in req.get("approvals", []))
+        if not is_requester and not is_approver:
+            raise HTTPException(status_code=403, detail="You do not have access to this request")
     return req
 
 
 @requests_router.post("", status_code=201)
 async def create_request(req: RequestCreate, user=Depends(get_current_user)):
+    role = user.get("role", "")
+    if role not in ("requestor", "both", "super_admin"):
+        raise HTTPException(status_code=403, detail="Only requestors can create requests")
     tmpl = await db.form_templates.find_one({"id": req.form_template_id, "is_active": True}, {"_id": 0})
     if not tmpl:
         raise HTTPException(status_code=400, detail="Form template not found or inactive")
@@ -156,9 +177,62 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
 
     return result
 
+@requests_router.post("/{request_id}/cancel")
+async def cancel_request(request_id: str, user=Depends(get_current_user)):
+    req = await db.requests.find_one({"id": request_id}, {"_id": 0})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    if req["status"] != "in_progress":
+        raise HTTPException(status_code=400, detail=f"Request is already {req['status']}")
+
+    # Only the requester (or super admin) can cancel their own request
+    if user["id"] != req["requester_id"] and user.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="You are not allowed to cancel this request")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    await db.requests.update_one(
+        {"id": request_id},
+        {
+            "$set": {
+                "status": "cancelled",
+                "updated_at": now,
+            }
+        },
+    )
+
+    updated = await db.requests.find_one({"id": request_id}, {"_id": 0})
+
+    # Broadcast cancellation events so dashboards and detail views update live
+    await manager.broadcast(
+        event="REQUEST_CANCELLED",
+        payload={
+            "request_id": updated["id"],
+            "request_number": updated["request_number"],
+            "department_id": updated["department_id"],
+            "requester_id": updated["requester_id"],
+            "status": updated["status"],
+        },
+    )
+
+    await manager.broadcast(
+        event="REQUEST_STATE_CHANGED",
+        payload={
+            "request_id": updated["id"],
+            "status": updated["status"],
+            "current_step": updated.get("current_approval_step", 0),
+        },
+    )
+
+    return updated
+
 
 @requests_router.post("/{request_id}/action")
 async def action_request(request_id: str, action: RequestAction, user=Depends(get_current_user)):
+    role = user.get("role", "")
+    if role not in ("approver", "both", "super_admin"):
+        raise HTTPException(status_code=403, detail="Only approvers can approve or reject requests")
     req = await db.requests.find_one({"id": request_id}, {"_id": 0})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")

@@ -18,11 +18,17 @@ async def get_dashboard_stats(user=Depends(get_current_user)):
         total_users = await db.users.count_documents({})
         total_templates = await db.form_templates.count_documents({"is_active": True})
     else:
-        total = await db.requests.count_documents({"requester_id": uid})
-        pending = await db.requests.count_documents({"requester_id": uid, "status": "in_progress"})
-        approved = await db.requests.count_documents({"requester_id": uid, "status": "approved"})
-        rejected = await db.requests.count_documents({"requester_id": uid, "status": "rejected"})
-        cancelled = await db.requests.count_documents({"requester_id": uid, "status": "cancelled"})
+        user_scope = {
+            "$or": [
+                {"requester_id": uid},
+                {"approvals": {"$elemMatch": {"approver_id": uid}}},
+            ]
+        }
+        total = await db.requests.count_documents(user_scope)
+        pending = await db.requests.count_documents({**user_scope, "status": "in_progress"})
+        approved = await db.requests.count_documents({**user_scope, "status": "approved"})
+        rejected = await db.requests.count_documents({**user_scope, "status": "rejected"})
+        cancelled = await db.requests.count_documents({**user_scope, "status": "cancelled"})
         total_users = 0
         total_templates = 0
 
