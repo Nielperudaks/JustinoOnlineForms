@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { X, Plus, Trash2, FileText, Building } from "lucide-react";
 
@@ -195,13 +196,14 @@ export default function BuildFormDialog({
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 flex flex-col gap-2">
               <Label className="text-sm font-medium text-slate-700">Description (optional)</Label>
-              <textarea
+              <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of the form"
                 className="text-sm"
+                rows={3}
               />
             </div>
 
@@ -283,7 +285,7 @@ export default function BuildFormDialog({
                         <Label className="text-xs text-slate-500">
                           Options (one per line; commas allowed in text)
                         </Label>
-                        <textarea
+                        <Textarea
                           value={
                             Array.isArray(field.options)
                               ? field.options.join("\n")
