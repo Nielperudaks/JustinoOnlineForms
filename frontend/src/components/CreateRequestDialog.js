@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,8 +10,98 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, FileText, ChevronRight } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { X, FileText, ChevronRight, Upload, File } from "lucide-react";
+
+const DROPZONE_MAX_SIZE = 2 * 1024 * 1024; // 2MB
+const ALLOWED_EXTENSIONS = /\.(png|jpg|jpeg|gif|webp|pdf|xls|xlsx|doc|docx)$/i;
+
+function DropzoneInput({ value, onFile, fieldName, required, accept, maxSize, allowedExtensions }) {
+  const [error, setError] = useState("");
+  const [drag, setDrag] = useState(false);
+  const inputRef = React.useRef(null);
+
+  const validateAndSet = (file) => {
+    setError("");
+    if (!file) return;
+    const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+    if (!allowedExtensions.test(ext)) {
+      setError("Allowed: images, PDF, Excel, Word only");
+      return;
+    }
+    if (file.size > maxSize) {
+      setError("File must be 2MB or less");
+      return;
+    }
+    onFile(fieldName, file);
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDrag(false);
+    const f = e.dataTransfer?.files?.[0];
+    if (f) validateAndSet(f);
+  };
+
+  const onDragOver = (e) => {
+    e.preventDefault();
+    setDrag(true);
+  };
+
+  const onDragLeave = () => setDrag(false);
+
+  const onInputChange = (e) => {
+    const f = e.target?.files?.[0];
+    if (f) validateAndSet(f);
+    e.target.value = "";
+  };
+
+  return (
+    <div className="space-y-2">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+          drag ? "border-blue-400 bg-blue-50/50" : "border-slate-200 hover:border-slate-300"
+        } ${error ? "border-red-300 bg-red-50/30" : ""}`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept={accept}
+          onChange={onInputChange}
+          className="hidden"
+          data-testid={`field-${fieldName}`}
+        />
+        {value ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-slate-700">
+            <File className="w-4 h-4 text-slate-500" />
+            {value.filename}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1 text-slate-500">
+            <Upload className="w-8 h-8 text-slate-400" />
+            <span className="text-sm">Drop file here or click to upload</span>
+            <span className="text-xs">Images, PDF, Excel, Word • Max 2MB</span>
+          </div>
+        )}
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
 
 export default function CreateRequestDialog({
   templates,
@@ -39,14 +129,48 @@ export default function CreateRequestDialog({
     setTitle("");
     const initial = {};
     tmpl.fields.forEach((f) => {
-      initial[f.name] = "";
+      if (f.type === "table") {
+        const headers = f.column_headers || [];
+        const numRows = Math.max(1, Math.min(50, f.num_rows || 3));
+        const rows = Array.from({ length: numRows }, () =>
+          headers.map(() => ""),
+        );
+        initial[f.name] = {
+          title: f.table_title || "",
+          headers,
+          rows,
+        };
+      } else if (f.type === "dropzone") {
+        initial[f.name] = null;
+      } else {
+        initial[f.name] = "";
+      }
     });
     setFormData(initial);
     setStep(3);
   };
 
+  const validateForm = () => {
+    if (!selectedTemplate || !title.trim()) return false;
+    for (const f of selectedTemplate.fields) {
+      if (!f.required) continue;
+      const val = formData[f.name];
+      if (f.type === "table") {
+        const hasContent = val?.rows?.some((row) =>
+          row?.some((cell) => String(cell || "").trim()),
+        );
+        if (!hasContent) return false;
+      } else if (f.type === "dropzone") {
+        if (val == null) return false;
+      } else if (val == null || String(val || "").trim() === "") {
+        return false;
+      }
+    }
+    return true;
+  };
+
   const handleSubmit = async () => {
-    if (!title.trim()) return;
+    if (!validateForm()) return;
     setSubmitting(true);
     await onSubmit({
       form_template_id: selectedTemplate.id,
@@ -58,12 +182,114 @@ export default function CreateRequestDialog({
     setSubmitting(false);
   };
 
+  const updateTableCell = useCallback(
+    (fieldName, rowIdx, colIdx, value) => {
+      setFormData((prev) => {
+        const tbl = prev[fieldName];
+        if (!tbl?.rows) return prev;
+        const rows = tbl.rows.map((r, ri) =>
+          ri === rowIdx ? r.map((c, ci) => (ci === colIdx ? value : c)) : r,
+        );
+        return { ...prev, [fieldName]: { ...tbl, rows } };
+      });
+    },
+    [],
+  );
+
+  const handleFileDrop = useCallback(
+    (fieldName, file) => {
+      if (!file) return;
+      const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+      if (!ALLOWED_EXTENSIONS.test(ext)) {
+        return; // invalid type - will show error
+      }
+      if (file.size > DROPZONE_MAX_SIZE) {
+        return; // too large
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result;
+        setFormData((prev) => ({
+          ...prev,
+          [fieldName]: {
+            filename: file.name,
+            base64: base64.split(",")[1] || base64,
+            mimeType: file.type,
+          },
+        }));
+      };
+      reader.readAsDataURL(file);
+    },
+    [],
+  );
+
   const renderFieldInput = (field) => {
-    const val = formData[field.name] || "";
+    const val = formData[field.name] ?? "";
     const onChange = (v) =>
       setFormData((prev) => ({ ...prev, [field.name]: v }));
 
     switch (field.type) {
+      case "table": {
+        const tbl = formData[field.name];
+        const rows = tbl?.rows || [];
+        const headers = tbl?.headers || field.column_headers || [];
+        if (headers.length === 0) {
+          return (
+            <div className="text-xs text-slate-400 italic py-2">
+              Add column headers in the form builder
+            </div>
+          );
+        }
+        return (
+          <div className="rounded-lg border border-slate-200 overflow-hidden">
+            {tbl?.title && (
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">
+                {tbl.title}
+              </div>
+            )}
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-100">
+                  {headers.map((h, i) => (
+                    <TableHead key={i} className="text-xs font-medium">
+                      {h}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row, ri) => (
+                  <TableRow key={ri}>
+                    {row.map((cell, ci) => (
+                      <TableCell key={ci} className="p-1">
+                        <Input
+                          value={cell}
+                          onChange={(e) =>
+                            updateTableCell(field.name, ri, ci, e.target.value)
+                          }
+                          className="text-sm h-8 border-slate-200"
+                        />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        );
+      }
+      case "dropzone":
+        return (
+          <DropzoneInput
+            value={formData[field.name]}
+            onFile={handleFileDrop}
+            fieldName={field.name}
+            required={field.required}
+            accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.xls,.xlsx,.doc,.docx"
+            maxSize={DROPZONE_MAX_SIZE}
+            allowedExtensions={ALLOWED_EXTENSIONS}
+          />
+        );
       case "textarea":
         return (
           <Textarea
@@ -347,7 +573,7 @@ export default function CreateRequestDialog({
               <Button
                 data-testid="submit-request"
                 onClick={handleSubmit}
-                disabled={!title.trim() || submitting}
+                disabled={!validateForm() || submitting}
                 className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
               >
                 {submitting ? "Submitting..." : "Submit Request"}

@@ -11,10 +11,14 @@ templates_router = APIRouter(prefix="/form-templates", tags=["form-templates"])
 class FormField(BaseModel):
     name: str
     label: str
-    type: str  # text, textarea, number, date, select, file
+    type: str  # text, textarea, number, date, select, table, dropzone
     required: bool = True
     options: Optional[List[str]] = None
     placeholder: Optional[str] = ""
+    # Table field config
+    table_title: Optional[str] = None
+    column_headers: Optional[List[str]] = None
+    num_rows: Optional[int] = None
 
 
 class ApproverStep(BaseModel):

@@ -5,8 +5,17 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   FileText, Clock, CheckCircle2, XCircle, User, Calendar,
-  ArrowRight, MessageSquare, AlertTriangle, Building
+  ArrowRight, MessageSquare, AlertTriangle, Building, Download, File
 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
 
 const STATUS_CONFIG = {
@@ -199,15 +208,96 @@ export default function RequestDetail({
         {/* Form Data */}
         <div className="mb-6">
           <h4 className="text-sm font-semibold text-slate-800 mb-3">Request Details</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {Object.entries(request.form_data || {}).map(([key, value]) => (
-              <div key={key} className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">
-                  {key.replace(/_/g, " ")}
+          <div className="space-y-4">
+            {Object.entries(request.form_data || {}).map(([key, value]) => {
+              const label = key.replace(/_/g, " ");
+              if (value && typeof value === "object" && "headers" in value && "rows" in value) {
+                return (
+                  <div key={key} className="rounded-lg border border-slate-200 overflow-hidden">
+                    {value.title && (
+                      <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">
+                        {value.title}
+                      </div>
+                    )}
+                    <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold px-3 pt-2">
+                      {label}
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-slate-100">
+                          {(value.headers || []).map((h, i) => (
+                            <TableHead key={i} className="text-xs font-medium">
+                              {h}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(value.rows || []).map((row, ri) => (
+                          <TableRow key={ri}>
+                            {(row || []).map((cell, ci) => (
+                              <TableCell key={ci} className="text-sm py-2">
+                                {String(cell ?? "") || "-"}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                );
+              }
+              if (value && typeof value === "object" && "filename" in value && "base64" in value) {
+                const handleDownload = () => {
+                  const mimeType = value.mimeType || "application/octet-stream";
+                  const byteChars = atob(value.base64);
+                  const byteNumbers = new Array(byteChars.length);
+                  for (let i = 0; i < byteChars.length; i++) {
+                    byteNumbers[i] = byteChars.charCodeAt(i);
+                  }
+                  const byteArray = new Uint8Array(byteNumbers);
+                  const blob = new Blob([byteArray], { type: mimeType });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = value.filename || "attachment";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                };
+                return (
+                  <Card key={key} className="overflow-hidden">
+                    <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold px-4 pt-3">
+                      {label}
+                    </div>
+                    <CardContent className="p-4">
+                      <button
+                        onClick={handleDownload}
+                        className="flex items-center gap-3 w-full p-3 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50/30 transition-colors text-left"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                          <File className="w-5 h-5 text-slate-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-800 truncate">
+                            {value.filename}
+                          </div>
+                          <div className="text-xs text-slate-500">Click to download</div>
+                        </div>
+                        <Download className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                      </button>
+                    </CardContent>
+                  </Card>
+                );
+              }
+              return (
+                <div key={key} className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">
+                    {label}
+                  </div>
+                  <div className="text-sm text-slate-700">{String(value ?? "") || "-"}</div>
                 </div>
-                <div className="text-sm text-slate-700">{String(value) || "-"}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

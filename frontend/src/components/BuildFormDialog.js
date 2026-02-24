@@ -19,6 +19,8 @@ const FIELD_TYPES = [
   { value: "number", label: "Number" },
   { value: "date", label: "Date" },
   { value: "select", label: "Dropdown (select)" },
+  { value: "table", label: "Table" },
+  { value: "dropzone", label: "File dropzone" },
 ];
 
 function slugify(str) {
@@ -41,7 +43,7 @@ export default function BuildFormDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [fields, setFields] = useState([
-    { name: "field_1", label: "Field 1", type: "text", required: true, options: null },
+    { name: "field_1", label: "Field 1", type: "text", required: true, options: null, table_title: "", column_headers: null, num_rows: 3 },
   ]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -58,8 +60,11 @@ export default function BuildFormDialog({
               type: f.type || "text",
               required: f.required !== false,
               options: f.options && f.options.length ? f.options : null,
+              table_title: f.table_title || "",
+              column_headers: f.column_headers && f.column_headers.length ? f.column_headers : null,
+              num_rows: typeof f.num_rows === "number" ? f.num_rows : 3,
             }))
-          : [{ name: "field_1", label: "Field 1", type: "text", required: true, options: null }]
+          : [{ name: "field_1", label: "Field 1", type: "text", required: true, options: null, table_title: "", column_headers: null, num_rows: 3 }]
       );
     } else if (departments.length && !department_id) {
       setDepartment_id(departments[0].id);
@@ -76,6 +81,9 @@ export default function BuildFormDialog({
         type: "text",
         required: true,
         options: null,
+        table_title: "",
+        column_headers: null,
+        num_rows: 3,
       },
     ]);
   };
@@ -92,6 +100,9 @@ export default function BuildFormDialog({
       if (key === "label") {
         next[index].name = slugify(value) || next[index].name;
       }
+      // if (key === "column_headers" && typeof value === "string") {
+      //   next[index].column_headers = value.split(",").map((s) => s.trim()).filter(Boolean);
+      // }
       return next;
     });
   };
@@ -112,6 +123,16 @@ export default function BuildFormDialog({
               ? f.options
               : [];
         out.options = opts.length ? opts : ["Option 1", "Option 2"];
+      }
+      if (f.type === "table") {
+        out.table_title = (f.table_title || "").trim();
+        const tbl =
+          typeof f.column_headers === "string"
+            ? f.column_headers.split("\n").map((s) => s.trim()).filter(Boolean)
+            : Array.isArray(f.column_headers)
+              ? f.column_headers
+              : [];
+        out.column_headers = tbl.length ? tbl : ["Header 1", "Header 2"];
       }
       return out;
     });
@@ -300,6 +321,51 @@ export default function BuildFormDialog({
                           className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                           rows={3}
                         />
+                      </div>
+                    )}
+                    {field.type === "table" && (
+                      <div className="space-y-3 pt-1">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-slate-500">Table title</Label>
+                          <Input
+                            value={field.table_title || ""}
+                            onChange={(e) => updateField(index, "table_title", e.target.value)}
+                            placeholder="e.g. Budget Breakdown"
+                            className="text-sm h-8"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-slate-500">Column headers (one per line; commas allowed in text)</Label>
+                          <Textarea
+                            value={
+                              Array.isArray(field.column_headers)
+                                ? field.column_headers.join("\n")
+                                : typeof field.column_headers === "string"
+                                  ? field.column_headers
+                                  : ""
+                            }
+                            onChange={(e) => updateField(index, "column_headers", e.target.value)}
+                            placeholder={"Header 1\nHeader 2\nHeader 3\n..."}
+                            className="text-sm h-8"
+                            rows={4}
+                          />
+                        </div>
+                        <div className="space-y-1 w-24">
+                          <Label className="text-xs text-slate-500">Number of rows</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={50}
+                            value={field.num_rows ?? 3}
+                            onChange={(e) => updateField(index, "num_rows", parseInt(e.target.value, 10) || 3)}
+                            className="text-sm h-8"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {field.type === "dropzone" && (
+                      <div className="text-xs text-slate-500 pt-1">
+                        Accepts: images, PDF, Excel, Word. Max 2MB per file.
                       </div>
                     )}
                   </div>
