@@ -197,7 +197,7 @@ export default function BuildFormDialog({
 
             <div className="space-y-2">
               <Label className="text-sm font-medium text-slate-700">Description (optional)</Label>
-              <Input
+              <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of the form"

@@ -747,14 +747,16 @@ export default function AdminPage() {
                                               />
                                             </SelectTrigger>
                                             <SelectContent>
-                                              {approvers.map((a) => (
-                                                <SelectItem
-                                                  key={a.id}
-                                                  value={a.id}
-                                                >
-                                                  {a.name} ({a.email})
-                                                </SelectItem>
-                                              ))}
+                                              {approvers
+                                                .filter((a) => a.role !== "requestor")
+                                                .map((a) => (
+                                                  <SelectItem
+                                                    key={a.id}
+                                                    value={a.id}
+                                                  >
+                                                    {a.name} ({a.email})
+                                                  </SelectItem>
+                                                ))}
                                             </SelectContent>
                                           </Select>
                                         </div>
