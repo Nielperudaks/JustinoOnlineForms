@@ -83,13 +83,18 @@ async def get_request(request_id: str, user=Depends(get_current_user)):
         is_approver = any(a.get("approver_id") == uid for a in req.get("approvals", []))
         if not is_requester and not is_approver:
             raise HTTPException(status_code=403, detail="You do not have access to this request")
+    # Populate requester_department_id for older requests that don't have it
+    if "requester_department_id" not in req and req.get("requester_id"):
+        requester = await db.users.find_one({"id": req["requester_id"]}, {"department_id": 1})
+        if requester and requester.get("department_id"):
+            req["requester_department_id"] = requester["department_id"]
     return req
 
 
 @requests_router.post("", status_code=201)
 async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     role = user.get("role", "")
-    if role not in ("requestor", "both", "super_admin"):
+    if role not in ("requestor", "both", "manager", "super_admin"):
         raise HTTPException(status_code=403, detail="Only requestors can create requests")
     tmpl = await db.form_templates.find_one({"id": req.form_template_id, "is_active": True}, {"_id": 0})
     if not tmpl:
@@ -99,11 +104,31 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     request_number = f"REQ-{count + 1:05d}"
 
     approvals = []
+    requester_dept_id = user.get("department_id", "")
     for step in tmpl.get("approver_chain", []):
+        approver_id = step["user_id"]
+        approver_name = step.get("user_name", "")
+        if approver_id == "immediate_manager":
+            if not requester_dept_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Requestor has no department assigned. Immediate Manager requires the requestor to have a department."
+                )
+            manager_user = await db.users.find_one(
+                {"role": "manager", "department_id": requester_dept_id, "is_active": True},
+                {"_id": 0}
+            )
+            if not manager_user:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No Immediate Manager (Manager role) found in requestor's department. Please assign a Manager to the requestor's department."
+                )
+            approver_id = manager_user["id"]
+            approver_name = manager_user.get("name", "Immediate Manager")
         approvals.append({
             "step": step["step"],
-            "approver_id": step["user_id"],
-            "approver_name": step.get("user_name", ""),
+            "approver_id": approver_id,
+            "approver_name": approver_name,
             "status": "pending" if step["step"] == 1 else "waiting",
             "comments": "",
             "acted_at": None
@@ -119,6 +144,7 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
         "department_id": tmpl["department_id"],
         "requester_id": user["id"],
         "requester_name": user["name"],
+        "requester_department_id": requester_dept_id,
         "requester_email": user.get("email", ""),
         "title": req.title,
         "form_data": req.form_data,
@@ -231,7 +257,7 @@ async def cancel_request(request_id: str, user=Depends(get_current_user)):
 @requests_router.post("/{request_id}/action")
 async def action_request(request_id: str, action: RequestAction, user=Depends(get_current_user)):
     role = user.get("role", "")
-    if role not in ("approver", "both", "super_admin"):
+    if role not in ("approver", "both", "manager", "super_admin"):
         raise HTTPException(status_code=403, detail="Only approvers can approve or reject requests")
     req = await db.requests.find_one({"id": request_id}, {"_id": 0})
     if not req:

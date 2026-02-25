@@ -4,8 +4,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  FileText, Clock, CheckCircle2, XCircle, User, Calendar,
-  ArrowRight, MessageSquare, AlertTriangle, Building, Download, File
+  FileText,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  User,
+  Calendar,
+  ArrowRight,
+  MessageSquare,
+  AlertTriangle,
+  Building,
+  Download,
+  File,
+  FormInput,
+  FileArchive,
 } from "lucide-react";
 import {
   Table,
@@ -65,29 +77,49 @@ function ApprovalChain({ approvals }) {
               <div
                 data-testid={`approval-step-${a.step}`}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
-                  isApproved ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
-                  isRejected ? "bg-red-50 border-red-200 text-red-700" :
-                  isPending ? "bg-blue-50 border-blue-200 text-blue-700 animate-pulse-slow" :
-                  isCancelled ? "bg-slate-50 border-slate-200 text-slate-400" :
-                  "bg-slate-50 border-slate-200 text-slate-400"
+                  isApproved
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                    : isRejected
+                      ? "bg-red-50 border-red-200 text-red-700"
+                      : isPending
+                        ? "bg-blue-50 border-blue-200 text-blue-700 animate-pulse-slow"
+                        : isCancelled
+                          ? "bg-slate-50 border-slate-200 text-slate-400"
+                          : "bg-slate-50 border-slate-200 text-slate-400"
                 }`}
               >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  isApproved ? "bg-emerald-500 text-white" :
-                  isRejected ? "bg-red-500 text-white" :
-                  isPending ? "bg-blue-500 text-white" :
-                  isCancelled ? "bg-slate-300 text-white" :
-                  "bg-slate-300 text-white"
-                }`}>
-                  {isApproved ? <CheckCircle2 className="w-3.5 h-3.5" /> :
-                   isRejected ? <XCircle className="w-3.5 h-3.5" /> :
-                   isCancelled ? <XCircle className="w-3.5 h-3.5" /> :
-                   isPending ? <Clock className="w-3.5 h-3.5" /> :
-                   a.step}
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                    isApproved
+                      ? "bg-emerald-500 text-white"
+                      : isRejected
+                        ? "bg-red-500 text-white"
+                        : isPending
+                          ? "bg-blue-500 text-white"
+                          : isCancelled
+                            ? "bg-slate-300 text-white"
+                            : "bg-slate-300 text-white"
+                  }`}
+                >
+                  {isApproved ? (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  ) : isRejected ? (
+                    <XCircle className="w-3.5 h-3.5" />
+                  ) : isCancelled ? (
+                    <XCircle className="w-3.5 h-3.5" />
+                  ) : isPending ? (
+                    <Clock className="w-3.5 h-3.5" />
+                  ) : (
+                    a.step
+                  )}
                 </div>
                 <div>
-                  <div className="font-medium text-xs">{a.approver_name || "Approver"}</div>
-                  <div className="text-[10px] opacity-70 capitalize">{a.status}</div>
+                  <div className="font-medium text-xs">
+                    {a.approver_name || "Approver"}
+                  </div>
+                  <div className="text-[10px] opacity-70 capitalize">
+                    {a.status}
+                  </div>
                 </div>
               </div>
               {i < approvals.length - 1 && (
@@ -99,15 +131,22 @@ function ApprovalChain({ approvals }) {
       </div>
 
       {/* Comments from approvers */}
-      {approvals.filter(a => a.comments).map((a, i) => (
-        <div key={i} className="flex items-start gap-2 p-3 bg-slate-50 rounded-lg text-sm">
-          <MessageSquare className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <span className="font-medium text-slate-700">{a.approver_name}:</span>
-            <span className="text-slate-600 ml-1">{a.comments}</span>
+      {approvals
+        .filter((a) => a.comments)
+        .map((a, i) => (
+          <div
+            key={i}
+            className="flex items-start gap-2 p-3 bg-slate-50 rounded-lg text-sm"
+          >
+            <MessageSquare className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="font-medium text-slate-700">
+                {a.approver_name}:
+              </span>
+              <span className="text-slate-600 ml-1">{a.comments}</span>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
     </div>
   );
 }
@@ -125,11 +164,18 @@ export default function RequestDetail({
 
   if (!request) {
     return (
-      <div className="h-full flex items-center justify-center p-8" data-testid="request-detail-empty">
+      <div
+        className="h-full flex items-center justify-center p-8"
+        data-testid="request-detail-empty"
+      >
         <div className="text-center">
           <FileText className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-slate-400">Select a request</h3>
-          <p className="text-sm text-slate-400 mt-1">Choose a request from the list to view details</p>
+          <h3 className="text-lg font-medium text-slate-400">
+            Select a request
+          </h3>
+          <p className="text-sm text-slate-400 mt-1">
+            Choose a request from the list to view details
+          </p>
         </div>
       </div>
     );
@@ -137,7 +183,10 @@ export default function RequestDetail({
 
   const statusCfg = STATUS_CONFIG[request.status] || STATUS_CONFIG.in_progress;
   const StatusIcon = statusCfg.icon;
-  const dept = departments?.find(d => d.id === request.department_id);
+  const dept = departments?.find((d) => d.id === request.department_id);
+  const requesterDept = departments?.find(
+    (d) => d.id === request.requester_department_id,
+  );
 
   const canApprove =
     request.status === "in_progress" &&
@@ -146,7 +195,8 @@ export default function RequestDetail({
     );
 
   const canCancel =
-    request.status === "in_progress" && currentUser?.id === request.requester_id;
+    request.status === "in_progress" &&
+    currentUser?.id === request.requester_id;
 
   const handleAction = async (action) => {
     setActionLoading(true);
@@ -182,38 +232,86 @@ export default function RequestDetail({
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-3 flex-wrap">
-            <span className="font-mono text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">{request.request_number}</span>
+            <span className="font-mono text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">
+              {request.request_number}
+            </span>
             <Badge className={`${statusCfg.cls} border text-xs`}>
               <StatusIcon className="w-3 h-3 mr-1" />
               {statusCfg.label}
             </Badge>
             {request.priority && request.priority !== "normal" && (
-              <Badge className={`${PRIORITY_COLORS[request.priority]} border text-xs capitalize`}>
-                {request.priority === "urgent" && <AlertTriangle className="w-3 h-3 mr-1" />}
+              <Badge
+                className={`${PRIORITY_COLORS[request.priority]} border text-xs capitalize`}
+              >
+                {request.priority === "urgent" && (
+                  <AlertTriangle className="w-3 h-3 mr-1" />
+                )}
                 {request.priority}
               </Badge>
             )}
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">{request.title}</h2>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+            {request.title}
+          </h2>
           <div className="flex items-center gap-4 mt-3 text-sm text-slate-500 flex-wrap">
-            <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" />{request.requester_name}</span>
-            <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" />{formattedDate}</span>
-            {dept && <span className="flex items-center gap-1.5"><Building className="w-3.5 h-3.5" />{dept.name}</span>}
+            <span className="flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5" />
+              {request.requester_name}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5" />
+              {formattedDate}
+            </span>
+
+            {requesterDept && (
+              <span
+                className="flex items-center gap-1.5"
+                title="Requestor's department"
+              >
+                <Building className="w-3.5 h-3.5" />
+                {requesterDept.name}
+              </span>
+            )}
           </div>
-          <div className="mt-2 text-xs text-slate-400">{request.form_template_name}</div>
         </div>
 
-        <Separator className="my-6" />
+        <Separator className="my-4" />
 
         {/* Form Data */}
+
+        <div className="flex gap-2 my-2 text-xs text-slate-400">
+          {request && (
+            <span className="flex items-center gap-1.5">
+              <File className="w-3.5 h-3.5" />
+              {request.form_template_name}
+            </span>
+          )}
+          {/* {request.form_template_name}{" "} */}
+          {dept && (
+            <span className="flex items-center gap-1.5">
+              <Building className="w-3.5 h-3.5" />
+              {dept.name}
+            </span>
+          )}
+        </div>
         <div className="mb-6">
-          <h4 className="text-sm font-semibold text-slate-800 mb-3">Request Details</h4>
+          <h4 className="text-sm font-semibold text-slate-800 mb-3">
+            Request Details
+          </h4>
           <div className="space-y-4">
             {Object.entries(request.form_data || {}).map(([key, value]) => {
               const label = key.replace(/_/g, " ");
-              if (value && typeof value === "object" && "headers" in value && "rows" in value) {
+              if (
+                value &&
+                typeof value === "object" &&
+                "headers" in value &&
+                "rows" in value
+              ) {
                 return (
-                  <div key={key} className="rounded-lg border border-slate-200 overflow-hidden">
+                  <div
+                    key={key}
+                    className="rounded-lg border border-slate-200 overflow-hidden"
+                  >
                     {value.title && (
                       <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">
                         {value.title}
@@ -247,7 +345,12 @@ export default function RequestDetail({
                   </div>
                 );
               }
-              if (value && typeof value === "object" && "filename" in value && "base64" in value) {
+              if (
+                value &&
+                typeof value === "object" &&
+                "filename" in value &&
+                "base64" in value
+              ) {
                 const handleDownload = () => {
                   const mimeType = value.mimeType || "application/octet-stream";
                   const byteChars = atob(value.base64);
@@ -281,7 +384,9 @@ export default function RequestDetail({
                           <div className="text-sm font-medium text-slate-800 truncate">
                             {value.filename}
                           </div>
-                          <div className="text-xs text-slate-500">Click to download</div>
+                          <div className="text-xs text-slate-500">
+                            Click to download
+                          </div>
                         </div>
                         <Download className="w-4 h-4 text-slate-400 flex-shrink-0" />
                       </button>
@@ -290,11 +395,16 @@ export default function RequestDetail({
                 );
               }
               return (
-                <div key={key} className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <div
+                  key={key}
+                  className="p-3 bg-slate-50 rounded-lg border border-slate-100"
+                >
                   <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">
                     {label}
                   </div>
-                  <div className="text-sm text-slate-700">{String(value ?? "") || "-"}</div>
+                  <div className="text-sm text-slate-700">
+                    {String(value ?? "") || "-"}
+                  </div>
                 </div>
               );
             })}
@@ -304,7 +414,9 @@ export default function RequestDetail({
         {/* Notes */}
         {request.notes && (
           <div className="mb-6 p-4 bg-amber-50/50 border border-amber-100 rounded-lg">
-            <div className="text-xs font-semibold text-amber-700 mb-1">Notes</div>
+            <div className="text-xs font-semibold text-amber-700 mb-1">
+              Notes
+            </div>
             <div className="text-sm text-amber-800">{request.notes}</div>
           </div>
         )}

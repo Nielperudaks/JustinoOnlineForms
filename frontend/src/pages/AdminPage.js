@@ -180,17 +180,19 @@ export default function AdminPage() {
   const handleAssignApprover = async (templateId, step, userId) => {
     const tmpl = templates.find((t) => t.id === templateId);
     if (!tmpl) return;
+    const isImmediateManager = userId === "immediate_manager";
     const approver = approvers.find((a) => a.id === userId);
+    const displayName = isImmediateManager ? "Immediate Manager" : (approver?.name || "");
     const chain = [...(tmpl.approver_chain || [])];
     const existingIdx = chain.findIndex((a) => a.step === step);
     if (existingIdx >= 0) {
       chain[existingIdx] = {
         step,
         user_id: userId,
-        user_name: approver?.name || "",
+        user_name: displayName,
       };
     } else {
-      chain.push({ step, user_id: userId, user_name: approver?.name || "" });
+      chain.push({ step, user_id: userId, user_name: displayName });
     }
     chain.sort((a, b) => a.step - b.step);
     try {
@@ -282,6 +284,7 @@ export default function AdminPage() {
     requestor: "bg-slate-100 text-slate-600 border-slate-200",
     approver: "bg-blue-50 text-blue-700 border-blue-200",
     both: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    manager: "bg-amber-50 text-amber-700 border-amber-200",
   };
 
   return (
@@ -464,6 +467,7 @@ export default function AdminPage() {
                             <SelectItem value="requestor">Requestor</SelectItem>
                             <SelectItem value="approver">Approver</SelectItem>
                             <SelectItem value="both">Both</SelectItem>
+                            <SelectItem value="manager">Manager</SelectItem>
                             <SelectItem value="super_admin">
                               Super Admin
                             </SelectItem>
@@ -672,8 +676,9 @@ export default function AdminPage() {
                                         <div
                                           key={i}
                                           className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center border-2 border-white"
+                                          title={a.user_id === "immediate_manager" ? "Immediate Manager" : a.user_name}
                                         >
-                                          {a.user_name?.[0] || i + 1}
+                                          {a.user_id === "immediate_manager" ? "IM" : (a.user_name?.[0] || i + 1)}
                                         </div>
                                       ))}
                                     </div>
@@ -747,6 +752,12 @@ export default function AdminPage() {
                                               />
                                             </SelectTrigger>
                                             <SelectContent>
+                                              <SelectItem
+                                                key="immediate_manager"
+                                                value="immediate_manager"
+                                              >
+                                                Immediate Manager
+                                              </SelectItem>
                                               {approvers
                                                 .filter((a) => a.role !== "requestor")
                                                 .map((a) => (

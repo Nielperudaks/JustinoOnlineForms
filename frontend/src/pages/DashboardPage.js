@@ -40,7 +40,7 @@ export default function DashboardPage() {
   const [selectedDept, setSelectedDept] = useState(null);
   const [activeFilter, setActiveFilter] = useState("all");
 
-  const canCreateRequest = user?.role === "requestor" || user?.role === "both" || user?.role === "super_admin";
+  const canCreateRequest = user?.role === "requestor" || user?.role === "both" || user?.role === "manager" || user?.role === "super_admin";
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -139,8 +139,8 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user?.role) return;
     const role = user.role;
-    const canUseMyRequests = role === "requestor" || role === "both" || role === "super_admin";
-    const canUseMyApprovals = role === "approver" || role === "both" || role === "super_admin";
+    const canUseMyRequests = role === "requestor" || role === "both" || role === "manager" || role === "super_admin";
+    const canUseMyApprovals = role === "approver" || role === "both" || role === "manager" || role === "super_admin";
     if (activeFilter === "my_requests" && !canUseMyRequests) setActiveFilter("all");
     if (activeFilter === "my_approvals" && !canUseMyApprovals) setActiveFilter("all");
   }, [user?.role, activeFilter]);

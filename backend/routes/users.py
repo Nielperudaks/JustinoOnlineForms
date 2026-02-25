@@ -92,7 +92,7 @@ async def delete_user(user_id: str, admin=Depends(require_admin)):
 
 @users_router.get("/approvers")
 async def list_approvers(department_id: Optional[str] = None, user=Depends(get_current_user)):
-    query = {"role": {"$in": ["approver", "both", "super_admin"]}}
+    query = {"role": {"$in": ["approver", "both", "manager", "super_admin"]}}
     if department_id:
         query["department_id"] = department_id
     approvers = await db.users.find(query, {"_id": 0, "password_hash": 0}).to_list(500)

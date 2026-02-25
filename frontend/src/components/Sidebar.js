@@ -22,11 +22,11 @@ const FILTER_ITEMS = [
 ];
 
 function canRequest(role) {
-  return role === "requestor" || role === "both" || role === "super_admin";
+  return role === "requestor" || role === "both" || role === "manager" || role === "super_admin";
 }
 
 function canApprove(role) {
-  return role === "approver" || role === "both" || role === "super_admin";
+  return role === "approver" || role === "both" || role === "manager" || role === "super_admin";
 }
 
 export default function Sidebar({
