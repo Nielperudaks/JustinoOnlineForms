@@ -230,7 +230,7 @@ export default function RequestDetail({
     <div className="h-full overflow-y-auto" data-testid="request-detail">
       <div className="max-w-3xl mx-auto p-6 lg:p-10 animate-fade-in">
         {/* Header */}
-        <div className="mb-6">
+        <div className="">
           <div className="flex items-center gap-3 mb-3 flex-wrap">
             <span className="font-mono text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">
               {request.request_number}
@@ -273,27 +273,27 @@ export default function RequestDetail({
               </span>
             )}
           </div>
+          <div className="flex mt-2 text-xs text-slate-400">
+            {request && (
+              <span className="flex items-center gap-1.5">
+                <File className="w-3.5 h-3.5" />
+                {request.form_template_name} 
+              </span>
+            )}
+            {/* {request.form_template_name}{" "} */}
+            {dept && (
+              <span className="flex ml-1 items-center gap-1.5">
+                {/* <Building className="w-3.5 h-3.5" /> */}
+                - {dept.name}
+              </span>
+            )}
+          </div>
         </div>
 
-        <Separator className="my-4" />
+        <Separator className="my-6" />
 
         {/* Form Data */}
 
-        <div className="flex gap-2 my-2 text-xs text-slate-400">
-          {request && (
-            <span className="flex items-center gap-1.5">
-              <File className="w-3.5 h-3.5" />
-              {request.form_template_name}
-            </span>
-          )}
-          {/* {request.form_template_name}{" "} */}
-          {dept && (
-            <span className="flex items-center gap-1.5">
-              <Building className="w-3.5 h-3.5" />
-              {dept.name}
-            </span>
-          )}
-        </div>
         <div className="mb-6">
           <h4 className="text-sm font-semibold text-slate-800 mb-3">
             Request Details

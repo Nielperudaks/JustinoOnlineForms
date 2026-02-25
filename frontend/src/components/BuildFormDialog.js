@@ -133,6 +133,7 @@ export default function BuildFormDialog({
               ? f.column_headers
               : [];
         out.column_headers = tbl.length ? tbl : ["Header 1", "Header 2"];
+        out.num_rows = Number.isInteger(f.num_rows) ? f.num_rows : 3;
       }
       return out;
     });
@@ -357,7 +358,7 @@ export default function BuildFormDialog({
                             min={1}
                             max={50}
                             value={field.num_rows ?? 3}
-                            onChange={(e) => updateField(index, "num_rows", parseInt(e.target.value, 10) || 3)}
+                            onChange={(e) => updateField(index, "num_rows", parseInt(e.target.value, 10))}
                             className="text-sm h-8"
                           />
                         </div>
