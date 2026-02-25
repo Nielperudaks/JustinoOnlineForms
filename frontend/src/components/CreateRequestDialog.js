@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ import { X, FileText, ChevronRight, Upload, File } from "lucide-react";
 
 const DROPZONE_MAX_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_EXTENSIONS = /\.(png|jpg|jpeg|gif|webp|pdf|xls|xlsx|doc|docx)$/i;
+
 
 function DropzoneInput({ value, onFile, fieldName, required, accept, maxSize, allowedExtensions }) {
   const [error, setError] = useState("");
@@ -62,6 +63,8 @@ function DropzoneInput({ value, onFile, fieldName, required, accept, maxSize, al
     if (f) validateAndSet(f);
     e.target.value = "";
   };
+
+ 
 
   return (
     <div className="space-y-2">
@@ -118,11 +121,14 @@ export default function CreateRequestDialog({
   const [priority, setPriority] = useState("normal");
   const [submitting, setSubmitting] = useState(false);
 
+
   const filteredTemplates = templates.filter(
     (t) => !selectedDeptId || t.department_id === selectedDeptId,
   );
 
   const deptName = departments.find((d) => d.id === selectedDeptId)?.name || "";
+  
+
 
   const handleSelectTemplate = (tmpl) => {
     setSelectedTemplate(tmpl);
@@ -389,7 +395,7 @@ export default function CreateRequestDialog({
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto p-5" >
           {/* Step 1: Select Department */}
           {step === 1 && (
             <div className="grid grid-cols-2 gap-3">
@@ -454,7 +460,7 @@ export default function CreateRequestDialog({
 
           {/* Step 3: Fill Form */}
           {step === 3 && selectedTemplate && (
-            <div className="space-y-4">
+            <div className="space-y-4" >
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-slate-700">
                   Request Title *

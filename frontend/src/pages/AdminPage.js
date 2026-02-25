@@ -144,6 +144,16 @@ export default function AdminPage() {
   };
 
   const handleDeleteUser = async (uid) => {
+    const isApproverOnAnyTemplate = templates.some((t) =>
+      (t.approver_chain || []).some((a) => a.user_id === uid),
+    );
+    if (isApproverOnAnyTemplate) {
+      toast.error(
+        "This user is currently assigned as an approver on one or more forms. Please reassign or remove them from all approver chains before deleting.",
+      );
+      return;
+    }
+
     if (!window.confirm("Delete this user?")) return;
     try {
       await deleteUser(uid);
