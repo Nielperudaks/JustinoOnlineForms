@@ -105,9 +105,13 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
 
     approvals = []
     requester_dept_id = user.get("department_id", "")
+    seen_approver_ids = set()
+    next_step_number = 1
+
     for step in tmpl.get("approver_chain", []):
         approver_id = step["user_id"]
         approver_name = step.get("user_name", "")
+
         if approver_id == "immediate_manager":
             if not requester_dept_id:
                 raise HTTPException(
@@ -125,14 +129,23 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
                 )
             approver_id = manager_user["id"]
             approver_name = manager_user.get("name", "Immediate Manager")
+
+        # Skip duplicate approvers so each user only appears once in the chain
+        if approver_id in seen_approver_ids:
+            continue
+
+        seen_approver_ids.add(approver_id)
+
         approvals.append({
-            "step": step["step"],
+            "step": next_step_number,
             "approver_id": approver_id,
             "approver_name": approver_name,
-            "status": "pending" if step["step"] == 1 else "waiting",
+            "status": "pending" if next_step_number == 1 else "waiting",
             "comments": "",
             "acted_at": None
         })
+
+        next_step_number += 1
 
     initial_status = "in_progress" if approvals else "approved"
 
