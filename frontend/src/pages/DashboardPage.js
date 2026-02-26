@@ -51,7 +51,7 @@ export default function DashboardPage() {
 
   const [listWidth, setListWidth] = useState(480);
   const minListWidth = 240;
-  const maxListWidth = 480;
+  const maxListWidth = 580;
   const isResizingRef = useRef(false);
 
   const handleResizeStart = useCallback(
@@ -437,7 +437,7 @@ export default function DashboardPage() {
           <div
             role="separator"
             aria-label="Resize panels"
-            className="w-1 flex-shrink-0 bg-slate-200 hover:bg-blue-400 active:bg-blue-500 cursor-col-resize transition-colors flex items-center justify-center group"
+            className=" flex-shrink-0 bg-slate-200 hover:bg-blue-400 active:bg-blue-500 cursor-col-resize transition-colors flex items-center justify-center group"
             onMouseDown={handleResizeStart}
           >
             <div className="w-0.5 h-8 bg-slate-400 group-hover:bg-blue-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
