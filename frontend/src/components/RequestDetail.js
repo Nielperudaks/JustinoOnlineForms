@@ -78,7 +78,7 @@ function ApprovalChain({ approvals }) {
                 data-testid={`approval-step-${a.step}`}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
                   isApproved
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-70q  43q0"
                     : isRejected
                       ? "bg-red-50 border-red-200 text-red-700"
                       : isPending
