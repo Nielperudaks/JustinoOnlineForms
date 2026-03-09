@@ -40,6 +40,7 @@ export const listDepartments = () => api.get('/departments');
 export const listAllDepartments = () => api.get('/departments/all');
 export const createDepartment = (data) => api.post('/departments', data);
 export const updateDepartment = (id, data) => api.put(`/departments/${id}`, data);
+export const deleteDepartment = (id) => api.delete(`/departments/${id}`);
 
 // Form Templates
 export const listTemplates = (params) => api.get('/form-templates', { params });

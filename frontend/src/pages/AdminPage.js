@@ -9,6 +9,8 @@ import {
   updateUser,
   deleteUser,
   listAllDepartments,
+  createDepartment,
+  deleteDepartment,
   listAllTemplates,
   updateTemplate,
   createTemplate,
@@ -19,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -76,6 +79,12 @@ export default function AdminPage() {
   // Build / Edit form dialog
   const [showBuildFormDialog, setShowBuildFormDialog] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
+  const [departmentForm, setDepartmentForm] = useState({
+    name: "",
+    code: "",
+    description: "",
+  });
+  const [isSavingDepartment, setIsSavingDepartment] = useState(false);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -272,6 +281,80 @@ export default function AdminPage() {
       fetchAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to delete form");
+    }
+  };
+
+  const handleDepartmentFormChange = (key, value) => {
+    setDepartmentForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const resetDepartmentForm = () => {
+    setDepartmentForm({
+      name: "",
+      code: "",
+      description: "",
+    });
+  };
+
+  const handleCreateDepartment = async () => {
+    const payload = {
+      name: departmentForm.name.trim(),
+      code: departmentForm.code.trim().toUpperCase(),
+      description: departmentForm.description.trim(),
+    };
+
+    if (!payload.name || !payload.code) {
+      toast.error("Department name and code are required");
+      return;
+    }
+
+    setIsSavingDepartment(true);
+    try {
+      await createDepartment(payload);
+      toast.success("Department created");
+      resetDepartmentForm();
+      fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to create department");
+    } finally {
+      setIsSavingDepartment(false);
+    }
+  };
+
+  const handleDeleteDepartment = async (dept) => {
+    const deptUserCount = users.filter((u) => u.department_id === dept.id).length;
+    const deptTemplateCount = templates.filter(
+      (t) => t.department_id === dept.id,
+    ).length;
+
+    if (deptUserCount > 0) {
+      toast.error(
+        `Cannot remove ${dept.name} while ${deptUserCount} user${deptUserCount === 1 ? "" : "s"} are still assigned to it.`,
+      );
+      return;
+    }
+
+    if (deptTemplateCount > 0) {
+      toast.error(
+        `Cannot remove ${dept.name} while ${deptTemplateCount} form${deptTemplateCount === 1 ? "" : "s"} still belong to it.`,
+      );
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Remove the department "${dept.name}"? This action cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deleteDepartment(dept.id);
+      toast.success("Department removed");
+      fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to remove department");
     }
   };
 
@@ -814,10 +897,67 @@ export default function AdminPage() {
           {/* DEPARTMENTS TAB */}
           <TabsContent value="departments">
             <div className="bg-white rounded-lg border border-slate-200">
-              <div className="p-4 border-b border-slate-100">
-                <h3 className="text-sm font-semibold text-slate-800">
-                  Departments ({departments.length})
-                </h3>
+              <div className="p-4 border-b border-slate-100 flex items-start justify-between gap-6 flex-wrap">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Departments ({departments.length})
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Add departments here, and remove them only when they no longer have users or forms.
+                  </p>
+                </div>
+                <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">Department name *</Label>
+                    <Input
+                      value={departmentForm.name}
+                      onChange={(e) =>
+                        handleDepartmentFormChange("name", e.target.value)
+                      }
+                      placeholder="e.g. Human Resources"
+                      className="h-9 text-sm"
+                      data-testid="department-name"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">Department code *</Label>
+                    <Input
+                      value={departmentForm.code}
+                      onChange={(e) =>
+                        handleDepartmentFormChange(
+                          "code",
+                          e.target.value.toUpperCase(),
+                        )
+                      }
+                      placeholder="e.g. HR"
+                      className="h-9 text-sm uppercase"
+                      data-testid="department-code"
+                    />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <Label className="text-xs text-slate-600">Description</Label>
+                    <Textarea
+                      value={departmentForm.description}
+                      onChange={(e) =>
+                        handleDepartmentFormChange("description", e.target.value)
+                      }
+                      placeholder="Optional description for admins"
+                      className="text-sm min-h-[84px]"
+                      data-testid="department-description"
+                    />
+                  </div>
+                  <div className="md:col-span-2 flex justify-end">
+                    <Button
+                      onClick={handleCreateDepartment}
+                      disabled={isSavingDepartment}
+                      className="h-9 px-4 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                      data-testid="add-department-button"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" />
+                      {isSavingDepartment ? "Saving..." : "Add Department"}
+                    </Button>
+                  </div>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">
                 {departments.map((dept) => {
@@ -827,27 +967,55 @@ export default function AdminPage() {
                   const deptUserCount = users.filter(
                     (u) => u.department_id === dept.id,
                   ).length;
+                  const cannotDelete = deptUserCount > 0 || deptTemplateCount > 0;
                   return (
                     <div
                       key={dept.id}
                       data-testid={`dept-card-${dept.code}`}
                       className="p-4 border border-slate-200 rounded-lg hover:shadow-sm transition-shadow"
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-sm font-semibold text-slate-800">
-                          {dept.name}
-                        </h4>
-                        <span className="font-mono text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
-                          {dept.code}
-                        </span>
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-800">
+                            {dept.name}
+                          </h4>
+                          <span className="inline-flex mt-1 font-mono text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
+                            {dept.code}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteDepartment(dept)}
+                          disabled={cannotDelete}
+                          className="h-8 px-2 text-slate-400 hover:text-red-600 disabled:text-slate-300"
+                          data-testid={`delete-department-${dept.id}`}
+                          title={
+                            deptUserCount > 0
+                              ? "Remove users from this department before deleting it."
+                              : deptTemplateCount > 0
+                                ? "Remove this department's forms before deleting it."
+                                : "Remove department"
+                          }
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
                       </div>
                       <p className="text-xs text-slate-400 line-clamp-2 mb-3">
-                        {dept.description}
+                        {dept.description || "No description provided."}
                       </p>
                       <div className="flex gap-4 text-xs text-slate-500">
                         <span>{deptTemplateCount} forms</span>
                         <span>{deptUserCount} users</span>
                       </div>
+                      {cannotDelete && (
+                        <p className="mt-3 text-[11px] text-amber-600">
+                          {deptUserCount > 0
+                            ? "Users are still assigned to this department."
+                            : "Forms are still assigned to this department."}
+                        </p>
+                      )}
                     </div>
                   );
                 })}

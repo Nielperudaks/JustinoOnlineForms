@@ -59,3 +59,30 @@ async def update_department(dept_id: str, req: DepartmentUpdate, admin=Depends(r
         raise HTTPException(status_code=404, detail="Department not found")
     dept = await db.departments.find_one({"id": dept_id}, {"_id": 0})
     return dept
+
+
+@departments_router.delete("/{dept_id}")
+async def delete_department(dept_id: str, admin=Depends(require_admin)):
+    dept = await db.departments.find_one({"id": dept_id}, {"_id": 0})
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    assigned_users = await db.users.count_documents({"department_id": dept_id})
+    if assigned_users > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete department while users are still assigned to it.",
+        )
+
+    existing_templates = await db.form_templates.count_documents({"department_id": dept_id})
+    if existing_templates > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete department while forms still belong to it.",
+        )
+
+    result = await db.departments.delete_one({"id": dept_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    return {"message": "Department deleted"}

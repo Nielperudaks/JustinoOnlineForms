@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Plus, Trash2, FileText, Building } from "lucide-react";
+import { X, Plus, Trash2, Building, GripVertical } from "lucide-react";
 
 const FIELD_TYPES = [
   { value: "text", label: "Text" },
@@ -31,6 +31,46 @@ function slugify(str) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
+function createFieldKey() {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `field_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createField(overrides = {}) {
+  return {
+    _key: createFieldKey(),
+    name: "field_1",
+    label: "Field 1",
+    type: "text",
+    required: true,
+    options: null,
+    table_title: "",
+    column_headers: null,
+    num_rows: 3,
+    ...overrides,
+  };
+}
+
+function reorderFields(items, fromIndex, toIndex) {
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= items.length ||
+    toIndex >= items.length
+  ) {
+    return items;
+  }
+
+  const next = [...items];
+  const [movedItem] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, movedItem);
+  return next;
+}
+
 export default function BuildFormDialog({
   departments,
   onClose,
@@ -42,10 +82,9 @@ export default function BuildFormDialog({
   const [department_id, setDepartment_id] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [fields, setFields] = useState([
-    { name: "field_1", label: "Field 1", type: "text", required: true, options: null, table_title: "", column_headers: null, num_rows: 3 },
-  ]);
+  const [fields, setFields] = useState([createField()]);
   const [submitting, setSubmitting] = useState(false);
+  const [draggedFieldIndex, setDraggedFieldIndex] = useState(null);
 
   useEffect(() => {
     if (initialTemplate) {
@@ -54,17 +93,20 @@ export default function BuildFormDialog({
       setDescription(initialTemplate.description || "");
       setFields(
         (initialTemplate.fields || []).length > 0
-          ? initialTemplate.fields.map((f) => ({
-              name: f.name,
-              label: f.label || f.name,
-              type: f.type || "text",
-              required: f.required !== false,
-              options: f.options && f.options.length ? f.options : null,
-              table_title: f.table_title || "",
-              column_headers: f.column_headers && f.column_headers.length ? f.column_headers : null,
-              num_rows: typeof f.num_rows === "number" ? f.num_rows : 3,
-            }))
-          : [{ name: "field_1", label: "Field 1", type: "text", required: true, options: null, table_title: "", column_headers: null, num_rows: 3 }]
+          ? initialTemplate.fields.map((f, index) =>
+              createField({
+                name: f.name || `field_${index + 1}`,
+                label: f.label || f.name || `Field ${index + 1}`,
+                type: f.type || "text",
+                required: f.required !== false,
+                options: f.options && f.options.length ? f.options : null,
+                table_title: f.table_title || "",
+                column_headers:
+                  f.column_headers && f.column_headers.length ? f.column_headers : null,
+                num_rows: typeof f.num_rows === "number" ? f.num_rows : 3,
+              }),
+            )
+          : [createField()],
       );
     } else if (departments.length && !department_id) {
       setDepartment_id(departments[0].id);
@@ -75,7 +117,7 @@ export default function BuildFormDialog({
     const idx = fields.length + 1;
     setFields((prev) => [
       ...prev,
-      {
+      createField({
         name: `field_${idx}`,
         label: `Field ${idx}`,
         type: "text",
@@ -84,7 +126,7 @@ export default function BuildFormDialog({
         table_title: "",
         column_headers: null,
         num_rows: 3,
-      },
+      }),
     ]);
   };
 
@@ -107,10 +149,16 @@ export default function BuildFormDialog({
     });
   };
 
+  const handleFieldDrop = (dropIndex) => {
+    if (draggedFieldIndex === null) return;
+    setFields((prev) => reorderFields(prev, draggedFieldIndex, dropIndex));
+    setDraggedFieldIndex(null);
+  };
+
   const buildPayload = () => {
-    const fieldPayload = fields.map((f) => {
+    const fieldPayload = fields.map((f, index) => {
       const out = {
-        name: f.name || slugify(f.label) || `field_${fields.indexOf(f) + 1}`,
+        name: f.name || slugify(f.label) || `field_${index + 1}`,
         label: (f.label || f.name).trim() || "Field",
         type: f.type || "text",
         required: f.required !== false,
@@ -231,9 +279,14 @@ export default function BuildFormDialog({
 
             <div className="border-t border-slate-100 pt-4">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Form fields
-                </span>
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Form fields
+                  </span>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Drag fields by the handle to change their order in the form.
+                  </p>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
@@ -249,11 +302,26 @@ export default function BuildFormDialog({
               <div className="space-y-3">
                 {fields.map((field, index) => (
                   <div
-                    key={index}
-                    className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-2"
+                    key={field._key}
+                    className={`p-3 rounded-lg border space-y-2 transition-colors ${
+                      draggedFieldIndex === index
+                        ? "bg-blue-50 border-blue-200"
+                        : "bg-slate-50 border-slate-100"
+                    }`}
                     data-testid={`build-form-field-${index}`}
+                    draggable
+                    onDragStart={() => setDraggedFieldIndex(index)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => handleFieldDrop(index)}
+                    onDragEnd={() => setDraggedFieldIndex(null)}
                   >
                     <div className="flex gap-2 flex-wrap items-end">
+                      <div
+                        className="h-8 flex items-center px-2 rounded-md border border-dashed border-slate-200 bg-white text-slate-400 cursor-grab active:cursor-grabbing"
+                        title="Drag to reorder field"
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </div>
                       <div className="flex-1 min-w-[120px] space-y-1">
                         <Label className="text-xs text-slate-500">Label</Label>
                         <Input
