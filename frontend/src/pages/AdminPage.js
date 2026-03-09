@@ -10,6 +10,7 @@ import {
   deleteUser,
   listAllDepartments,
   createDepartment,
+  updateDepartment,
   deleteDepartment,
   listAllTemplates,
   updateTemplate,
@@ -85,6 +86,13 @@ export default function AdminPage() {
     description: "",
   });
   const [isSavingDepartment, setIsSavingDepartment] = useState(false);
+  const [editingDepartmentId, setEditingDepartmentId] = useState(null);
+  const [editingDepartmentForm, setEditingDepartmentForm] = useState({
+    name: "",
+    code: "",
+    description: "",
+  });
+  const [isUpdatingDepartment, setIsUpdatingDepartment] = useState(false);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -131,7 +139,7 @@ export default function AdminPage() {
           role: userForm.role,
           department_id: userForm.department_id,
         };
-        await   (editingUser.id, updates);
+        await updateUser(editingUser.id, updates);
         toast.success("User updated");
       } else {
         await createUser(userForm);
@@ -288,8 +296,30 @@ export default function AdminPage() {
     setDepartmentForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleEditingDepartmentFormChange = (key, value) => {
+    setEditingDepartmentForm((prev) => ({ ...prev, [key]: value }));
+  };
+
   const resetDepartmentForm = () => {
     setDepartmentForm({
+      name: "",
+      code: "",
+      description: "",
+    });
+  };
+
+  const startEditingDepartment = (dept) => {
+    setEditingDepartmentId(dept.id);
+    setEditingDepartmentForm({
+      name: dept.name || "",
+      code: dept.code || "",
+      description: dept.description || "",
+    });
+  };
+
+  const cancelEditingDepartment = () => {
+    setEditingDepartmentId(null);
+    setEditingDepartmentForm({
       name: "",
       code: "",
       description: "",
@@ -355,6 +385,31 @@ export default function AdminPage() {
       fetchAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to remove department");
+    }
+  };
+
+  const handleUpdateDepartment = async (deptId) => {
+    const payload = {
+      name: editingDepartmentForm.name.trim(),
+      code: editingDepartmentForm.code.trim().toUpperCase(),
+      description: editingDepartmentForm.description.trim(),
+    };
+
+    if (!payload.name || !payload.code) {
+      toast.error("Department name and code are required");
+      return;
+    }
+
+    setIsUpdatingDepartment(true);
+    try {
+      await updateDepartment(deptId, payload);
+      toast.success("Department updated");
+      cancelEditingDepartment();
+      fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to update department");
+    } finally {
+      setIsUpdatingDepartment(false);
     }
   };
 
@@ -968,6 +1023,7 @@ export default function AdminPage() {
                     (u) => u.department_id === dept.id,
                   ).length;
                   const cannotDelete = deptUserCount > 0 || deptTemplateCount > 0;
+                  const isEditingDepartment = editingDepartmentId === dept.id;
                   return (
                     <div
                       key={dept.id}
@@ -975,46 +1031,134 @@ export default function AdminPage() {
                       className="p-4 border border-slate-200 rounded-lg hover:shadow-sm transition-shadow"
                     >
                       <div className="flex items-start justify-between gap-3 mb-2">
-                        <div>
-                          <h4 className="text-sm font-semibold text-slate-800">
-                            {dept.name}
-                          </h4>
-                          <span className="inline-flex mt-1 font-mono text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
-                            {dept.code}
-                          </span>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteDepartment(dept)}
-                          disabled={cannotDelete}
-                          className="h-8 px-2 text-slate-400 hover:text-red-600 disabled:text-slate-300"
-                          data-testid={`delete-department-${dept.id}`}
-                          title={
-                            deptUserCount > 0
-                              ? "Remove users from this department before deleting it."
-                              : deptTemplateCount > 0
-                                ? "Remove this department's forms before deleting it."
-                                : "Remove department"
-                          }
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        {isEditingDepartment ? (
+                          <div className="w-full space-y-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-slate-600">Department name *</Label>
+                              <Input
+                                value={editingDepartmentForm.name}
+                                onChange={(e) =>
+                                  handleEditingDepartmentFormChange(
+                                    "name",
+                                    e.target.value,
+                                  )
+                                }
+                                className="h-9 text-sm"
+                                data-testid={`edit-department-name-${dept.id}`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-slate-600">Department code *</Label>
+                              <Input
+                                value={editingDepartmentForm.code}
+                                onChange={(e) =>
+                                  handleEditingDepartmentFormChange(
+                                    "code",
+                                    e.target.value.toUpperCase(),
+                                  )
+                                }
+                                className="h-9 text-sm uppercase"
+                                data-testid={`edit-department-code-${dept.id}`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-slate-600">Description</Label>
+                              <Textarea
+                                value={editingDepartmentForm.description}
+                                onChange={(e) =>
+                                  handleEditingDepartmentFormChange(
+                                    "description",
+                                    e.target.value,
+                                  )
+                                }
+                                className="text-sm min-h-[96px]"
+                                data-testid={`edit-department-description-${dept.id}`}
+                              />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={cancelEditingDepartment}
+                                className="h-8 px-3 text-xs"
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleUpdateDepartment(dept.id)}
+                                disabled={isUpdatingDepartment}
+                                className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                                data-testid={`save-department-${dept.id}`}
+                              >
+                                <Save className="w-3.5 h-3.5 mr-1" />
+                                {isUpdatingDepartment ? "Saving..." : "Save"}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div>
+                              <h4 className="text-sm font-semibold text-slate-800">
+                                {dept.name}
+                              </h4>
+                              <span className="inline-flex mt-1 font-mono text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
+                                {dept.code}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => startEditingDepartment(dept)}
+                                className="h-8 px-2 text-slate-400 hover:text-blue-600"
+                                data-testid={`edit-department-${dept.id}`}
+                                title="Edit department"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteDepartment(dept)}
+                                disabled={cannotDelete}
+                                className="h-8 px-2 text-slate-400 hover:text-red-600 disabled:text-slate-300"
+                                data-testid={`delete-department-${dept.id}`}
+                                title={
+                                  deptUserCount > 0
+                                    ? "Remove users from this department before deleting it."
+                                    : deptTemplateCount > 0
+                                      ? "Remove this department's forms before deleting it."
+                                      : "Remove department"
+                                }
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </>
+                        )}
                       </div>
-                      <p className="text-xs text-slate-400 line-clamp-2 mb-3">
-                        {dept.description || "No description provided."}
-                      </p>
-                      <div className="flex gap-4 text-xs text-slate-500">
-                        <span>{deptTemplateCount} forms</span>
-                        <span>{deptUserCount} users</span>
-                      </div>
-                      {cannotDelete && (
-                        <p className="mt-3 text-[11px] text-amber-600">
-                          {deptUserCount > 0
-                            ? "Users are still assigned to this department."
-                            : "Forms are still assigned to this department."}
-                        </p>
+                      {!isEditingDepartment && (
+                        <>
+                          <p className="text-xs text-slate-400 line-clamp-2 mb-3">
+                            {dept.description || "No description provided."}
+                          </p>
+                          <div className="flex gap-4 text-xs text-slate-500">
+                            <span>{deptTemplateCount} forms</span>
+                            <span>{deptUserCount} users</span>
+                          </div>
+                          {cannotDelete && (
+                            <p className="mt-3 text-[11px] text-amber-600">
+                              {deptUserCount > 0
+                                ? "Users are still assigned to this department."
+                                : "Forms are still assigned to this department."}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   );
