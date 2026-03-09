@@ -131,7 +131,7 @@ export default function AdminPage() {
           role: userForm.role,
           department_id: userForm.department_id,
         };
-        await updateUser(editingUser.id, updates);
+        await   (editingUser.id, updates);
         toast.success("User updated");
       } else {
         await createUser(userForm);

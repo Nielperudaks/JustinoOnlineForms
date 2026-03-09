@@ -2,7 +2,7 @@ import React from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, FileText, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { differenceInHours, formatDistanceToNow } from "date-fns";
 
 const STATUS_CONFIG = {
   in_progress: { label: "In Progress", icon: Clock, cls: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -11,12 +11,31 @@ const STATUS_CONFIG = {
   cancelled: { label: "Cancelled", icon: XCircle, cls: "bg-slate-100 text-slate-500 border-slate-300" },
 };
 
-const PRIORITY_CONFIG = {
-  low: { cls: "text-slate-400" },
-  normal: { cls: "text-slate-500" },
-  high: { cls: "text-amber-500" },
-  urgent: { cls: "text-red-500" },
-};
+function getRequestAgeIndicator(request) {
+  if (request.status !== "in_progress" || !request.created_at) {
+    return null;
+  }
+
+  const ageInHours = differenceInHours(new Date(), new Date(request.created_at));
+
+  if (ageInHours > 24 * 5) {
+    return {
+      label: "5 days+",
+      iconClassName: "text-red-500",
+      badgeClassName: "bg-red-50 text-red-700 border-red-200",
+    };
+  }
+
+  if (ageInHours > 24 * 3) {
+    return {
+      label: "3 days+",
+      iconClassName: "text-amber-500",
+      badgeClassName: "bg-amber-50 text-amber-700 border-amber-200",
+    };
+  }
+
+  return null;
+}
 
 export default function RequestList({
   requests, selectedRequest, onSelect, searchQuery, onSearchChange, loading
@@ -55,7 +74,7 @@ export default function RequestList({
               const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG.in_progress;
               const StatusIcon = statusCfg.icon;
               const isActive = selectedRequest?.id === req.id;
-              const priorityCfg = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG.normal;
+              const ageIndicator = getRequestAgeIndicator(req);
               const timeAgo = req.created_at ? formatDistanceToNow(new Date(req.created_at), { addSuffix: true }) : "";
 
               return (
@@ -70,21 +89,32 @@ export default function RequestList({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-[10px] text-slate-400">{req.request_number}</span>
-                        {req.priority === "urgent" && <AlertTriangle className="w-3 h-3 text-red-500" />}
-                        {req.priority === "high" && <AlertTriangle className="w-3 h-3 text-amber-500" />}
+                        {ageIndicator && (
+                          <AlertTriangle className={`w-3 h-3 ${ageIndicator.iconClassName}`} />
+                        )}
                       </div>
-                      <h4 className="text-sm font-medium text-slate-800 truncate mt-0.5">{req.title}</h4>
+                      <h4 className="text-sm font-medium text-slate-800 truncate mt-0.5">
+                        {req.form_template_name || req.title}
+                      </h4>
                     </div>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium flex-shrink-0 ${statusCfg.cls}`}>
-                      {statusCfg.label}
-                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {ageIndicator && (
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${ageIndicator.badgeClassName}`}
+                        >
+                          {ageIndicator.label}
+                        </span>
+                      )}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${statusCfg.cls}`}>
+                        {statusCfg.label}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-400 mt-1.5">
-                    <span className="truncate">{req.form_template_name}</span>
+                    <span className="truncate">By {req.requester_name}</span>
                     <span className="flex-shrink-0 ml-2">{timeAgo}</span>
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-xs text-slate-400 min-w-0">
-                    <span className="truncate">By {req.requester_name}</span>
                     {req.total_approval_steps > 0 && (
                       <span className="font-mono text-[10px]">
                         Step {req.current_approval_step}/{req.total_approval_steps}

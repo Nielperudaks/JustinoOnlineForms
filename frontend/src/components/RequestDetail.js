@@ -28,7 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
-import { format } from "date-fns";
+import { differenceInHours, format } from "date-fns";
 
 const STATUS_CONFIG = {
   in_progress: {
@@ -53,12 +53,29 @@ const STATUS_CONFIG = {
   },
 };
 
-const PRIORITY_COLORS = {
-  low: "bg-slate-100 text-slate-600",
-  normal: "bg-slate-100 text-slate-600",
-  high: "bg-amber-50 text-amber-700 border-amber-200",
-  urgent: "bg-red-50 text-red-700 border-red-200",
-};
+function getRequestAgeIndicator(request) {
+  if (request.status !== "in_progress" || !request.created_at) {
+    return null;
+  }
+
+  const ageInHours = differenceInHours(new Date(), new Date(request.created_at));
+
+  if (ageInHours > 24 * 5) {
+    return {
+      label: "5 days+",
+      className: "bg-red-50 text-red-700 border-red-200",
+    };
+  }
+
+  if (ageInHours > 24 * 3) {
+    return {
+      label: "3 days+",
+      className: "bg-amber-50 text-amber-700 border-amber-200",
+    };
+  }
+
+  return null;
+}
 
 function ApprovalChain({ approvals }) {
   if (!approvals?.length) return null;
@@ -183,6 +200,7 @@ export default function RequestDetail({
 
   const statusCfg = STATUS_CONFIG[request.status] || STATUS_CONFIG.in_progress;
   const StatusIcon = statusCfg.icon;
+  const ageIndicator = getRequestAgeIndicator(request);
   const dept = departments?.find((d) => d.id === request.department_id);
   const requesterDept = departments?.find(
     (d) => d.id === request.requester_department_id,
@@ -239,19 +257,15 @@ export default function RequestDetail({
               <StatusIcon className="w-3 h-3 mr-1" />
               {statusCfg.label}
             </Badge>
-            {request.priority && request.priority !== "normal" && (
-              <Badge
-                className={`${PRIORITY_COLORS[request.priority]} border text-xs capitalize`}
-              >
-                {request.priority === "urgent" && (
-                  <AlertTriangle className="w-3 h-3 mr-1" />
-                )}
-                {request.priority}
+            {ageIndicator && (
+              <Badge className={`${ageIndicator.className} border text-xs`}>
+                <AlertTriangle className="w-3 h-3 mr-1" />
+                {ageIndicator.label}
               </Badge>
             )}
           </div>
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
-            {request.title}
+            {request.form_template_name || request.title}
           </h2>
           <div className="flex items-center gap-4 mt-3 text-sm text-slate-500 flex-wrap">
             <span className="flex items-center gap-1.5">
@@ -277,7 +291,7 @@ export default function RequestDetail({
             {request && (
               <span className="flex items-center gap-1.5">
                 <File className="w-3.5 h-3.5" />
-                {request.form_template_name} 
+                {request.form_template_name}
               </span>
             )}
             {/* {request.form_template_name}{" "} */}

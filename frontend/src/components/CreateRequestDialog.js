@@ -115,10 +115,8 @@ export default function CreateRequestDialog({
   const [step, setStep] = useState(1); // 1: select dept, 2: select form, 3: fill form
   const [selectedDeptId, setSelectedDeptId] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [title, setTitle] = useState("");
   const [formData, setFormData] = useState({});
   const [notes, setNotes] = useState("");
-  const [priority, setPriority] = useState("normal");
   const [submitting, setSubmitting] = useState(false);
 
 
@@ -132,7 +130,6 @@ export default function CreateRequestDialog({
 
   const handleSelectTemplate = (tmpl) => {
     setSelectedTemplate(tmpl);
-    setTitle("");
     const initial = {};
     tmpl.fields.forEach((f) => {
       if (f.type === "table") {
@@ -157,7 +154,7 @@ export default function CreateRequestDialog({
   };
 
   const validateForm = () => {
-    if (!selectedTemplate || !title.trim()) return false;
+    if (!selectedTemplate) return false;
     for (const f of selectedTemplate.fields) {
       if (!f.required) continue;
       const val = formData[f.name];
@@ -180,10 +177,8 @@ export default function CreateRequestDialog({
     setSubmitting(true);
     await onSubmit({
       form_template_id: selectedTemplate.id,
-      title: title.trim(),
       form_data: formData,
       notes,
-      priority,
     });
     setSubmitting(false);
   };
@@ -461,39 +456,16 @@ export default function CreateRequestDialog({
           {/* Step 3: Fill Form */}
           {step === 3 && selectedTemplate && (
             <div className="space-y-4" >
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">
-                  Request Title *
-                </Label>
-                <Input
-                  data-testid="request-title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Brief description of your request"
-                  className="text-sm"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-slate-700">
-                    Priority
-                  </Label>
-                  <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger
-                      data-testid="request-priority"
-                      className="text-sm"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="normal">Normal</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-blue-700">
+                  Request Name
                 </div>
+                <div className="mt-1 text-sm font-medium text-slate-800">
+                  {selectedTemplate.name}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  The request will automatically use the selected form name.
+                </p>
               </div>
 
               <div className="border-t border-slate-100 pt-4 mt-4">

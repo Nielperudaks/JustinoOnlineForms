@@ -11,10 +11,10 @@ requests_router = APIRouter(prefix="/requests", tags=["requests"])
 
 class RequestCreate(BaseModel):
     form_template_id: str
-    title: str
+    title: Optional[str] = None
     form_data: dict
     notes: Optional[str] = ""
-    priority: Optional[str] = "normal"  # low, normal, high, urgent
+    priority: Optional[str] = None
 
 
 class RequestAction(BaseModel):
@@ -66,7 +66,13 @@ async def list_requests(
 
     if search:
         s = search.lower()
-        reqs = [r for r in reqs if s in r.get("title", "").lower() or s in r.get("request_number", "").lower()]
+        reqs = [
+            r
+            for r in reqs
+            if s in r.get("title", "").lower()
+            or s in r.get("form_template_name", "").lower()
+            or s in r.get("request_number", "").lower()
+        ]
 
     return {"items": reqs, "total": total, "page": page, "limit": limit}
 
@@ -99,6 +105,7 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     tmpl = await db.form_templates.find_one({"id": req.form_template_id, "is_active": True}, {"_id": 0})
     if not tmpl:
         raise HTTPException(status_code=400, detail="Form template not found or inactive")
+    display_title = tmpl["name"]
 
     count = await db.requests.count_documents({})
     request_number = f"REQ-{count + 1:05d}"
@@ -159,10 +166,9 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
         "requester_name": user["name"],
         "requester_department_id": requester_dept_id,
         "requester_email": user.get("email", ""),
-        "title": req.title,
+        "title": display_title,
         "form_data": req.form_data,
         "notes": req.notes or "",
-        "priority": req.priority or "normal",
         "status": initial_status,
         "current_approval_step": 1 if approvals else 0,
         "total_approval_steps": len(approvals),
@@ -183,7 +189,7 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
                 "user_id": first_approver["id"],
                 "request_id": result["id"],
                 "request_number": request_number,
-                "message": f"New request '{req.title}' from {user['name']} requires your approval",
+                "message": f"New request '{display_title}' from {user['name']} requires your approval",
                 "type": "approval_required",
                 "is_read": False,
                 "created_at": datetime.now(timezone.utc).isoformat()
@@ -191,8 +197,8 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
             await db.notifications.insert_one(notif)
             await send_email_notification(
                 first_approver.get("email", ""),
-                f"Approval Required: {request_number} - {req.title}",
-                f"<h3>New Request Pending Your Approval</h3><p><b>{request_number}</b> - {req.title}</p><p>From: {user['name']}</p><p>Please log in to review and approve.</p>"
+                f"Approval Required: {request_number} - {display_title}",
+                f"<h3>New Request Pending Your Approval</h3><p><b>{request_number}</b> - {display_title}</p><p>From: {user['name']}</p><p>Please log in to review and approve.</p>"
             )
             await manager.broadcast(
                 event="NOTIFICATION_CREATED",
@@ -277,6 +283,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
         raise HTTPException(status_code=404, detail="Request not found")
     if req["status"] != "in_progress":
         raise HTTPException(status_code=400, detail=f"Request is already {req['status']}")
+    request_display_name = req.get("form_template_name") or req.get("title") or "Request"
 
     current_step = req.get("current_approval_step", 1)
     approvals = req.get("approvals", [])
@@ -311,7 +318,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
             "user_id": req["requester_id"],
             "request_id": request_id,
             "request_number": req["request_number"],
-            "message": f"Your request '{req['title']}' was rejected by {user['name']}",
+            "message": f"Your request '{request_display_name}' was rejected by {user['name']}",
             "type": "request_rejected",
             "is_read": False,
             "created_at": now
@@ -320,7 +327,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
         await send_email_notification(
             req.get("requester_email", ""),
             f"Request Rejected: {req['request_number']}",
-            f"<h3>Request Rejected</h3><p><b>{req['request_number']}</b> - {req['title']}</p><p>Rejected by: {user['name']}</p><p>Comments: {action.comments or 'None'}</p>"
+            f"<h3>Request Rejected</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>Rejected by: {user['name']}</p><p>Comments: {action.comments or 'None'}</p>"
         )
         await manager.broadcast(
             event="NOTIFICATION_CREATED",
@@ -369,7 +376,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                         "user_id": next_approver["id"],
                         "request_id": request_id,
                         "request_number": req["request_number"],
-                        "message": f"Request '{req['title']}' requires your approval (Step {next_step})",
+                        "message": f"Request '{request_display_name}' requires your approval (Step {next_step})",
                         "type": "approval_required",
                         "is_read": False,
                         "created_at": now
@@ -378,7 +385,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                     await send_email_notification(
                         next_approver.get("email", ""),
                         f"Approval Required (Step {next_step}): {req['request_number']}",
-                        f"<h3>Approval Required</h3><p><b>{req['request_number']}</b> - {req['title']}</p><p>Step {next_step} of {req['total_approval_steps']}</p>"
+                        f"<h3>Approval Required</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>Step {next_step} of {req['total_approval_steps']}</p>"
                     )
                     await manager.broadcast(
                         event="NOTIFICATION_CREATED",
@@ -410,7 +417,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                 "user_id": req["requester_id"],
                 "request_id": request_id,
                 "request_number": req["request_number"],
-                "message": f"Your request '{req['title']}' has been fully approved!",
+                "message": f"Your request '{request_display_name}' has been fully approved!",
                 "type": "request_approved",
                 "is_read": False,
                 "created_at": now
@@ -419,7 +426,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
             await send_email_notification(
                 req.get("requester_email", ""),
                 f"Request Approved: {req['request_number']}",
-                f"<h3>Request Approved</h3><p><b>{req['request_number']}</b> - {req['title']}</p><p>All approvers have signed off.</p>"
+                f"<h3>Request Approved</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>All approvers have signed off.</p>"
             )
             await manager.broadcast(
                 event="NOTIFICATION_CREATED",
