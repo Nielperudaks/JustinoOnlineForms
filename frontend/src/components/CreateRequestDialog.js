@@ -112,6 +112,9 @@ export default function CreateRequestDialog({
   onSubmit,
   onClose,
 }) {
+  const sortedDepartments = [...departments].sort((a, b) =>
+    (a.name || "").localeCompare(b.name || ""),
+  );
   const [step, setStep] = useState(1); // 1: select dept, 2: select form, 3: fill form
   const [selectedDeptId, setSelectedDeptId] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
@@ -120,9 +123,9 @@ export default function CreateRequestDialog({
   const [submitting, setSubmitting] = useState(false);
 
 
-  const filteredTemplates = templates.filter(
-    (t) => !selectedDeptId || t.department_id === selectedDeptId,
-  );
+  const filteredTemplates = templates
+    .filter((t) => !selectedDeptId || t.department_id === selectedDeptId)
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const deptName = departments.find((d) => d.id === selectedDeptId)?.name || "";
   
@@ -394,7 +397,7 @@ export default function CreateRequestDialog({
           {/* Step 1: Select Department */}
           {step === 1 && (
             <div className="grid grid-cols-2 gap-3">
-              {departments.map((dept) => (
+              {sortedDepartments.map((dept) => (
                 <button
                   key={dept.id}
                   data-testid={`select-dept-${dept.code}`}
