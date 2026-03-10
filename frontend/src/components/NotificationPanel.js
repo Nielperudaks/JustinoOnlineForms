@@ -19,7 +19,7 @@ const TYPE_COLORS = {
 export default function NotificationPanel({ notifications, onMarkRead, onMarkAllRead, onClose, onSelectRequest }) {
   return (
     <div
-      className="absolute right-0 top-12 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 animate-slide-up"
+      className="fixed left-1/2 -translate-x-1/2 top-16 w-[92vw] max-w-[24rem] bg-white rounded-xl shadow-2xl border border-slate-200 z-50 animate-slide-up sm:absolute sm:left-auto sm:translate-x-0 sm:right-0 sm:top-12 sm:w-96"
       data-testid="notification-panel"
     >
       <div className="flex items-center justify-between p-4 border-b border-slate-100">
