@@ -51,7 +51,7 @@ export default function RequestList({
             placeholder="Search requests..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 h-9 text-sm bg-white border-slate-200"
+            className="pl-9 h-9 text-sm max-[390px]:text-[13px] bg-white border-slate-200"
           />
         </div>
       </div>
@@ -81,42 +81,42 @@ export default function RequestList({
                 <div
                   key={req.id}
                   data-testid={`request-item-${req.id}`}
-                  className={`request-item px-4 py-3 border-b border-slate-100 ${isActive ? "active" : ""}`}
+                  className={`request-item px-4 py-3 max-[390px]:px-3 max-[390px]:py-2.5 border-b border-slate-100 ${isActive ? "active" : ""}`}
                   onClick={() => onSelect(req)}
                   style={{ animationDelay: `${idx * 30}ms` }}
                 >
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[10px] text-slate-400">{req.request_number}</span>
+                        <span className="font-mono text-[10px] max-[390px]:text-[9px] text-slate-400">{req.request_number}</span>
                         {ageIndicator && (
                           <AlertTriangle className={`w-3 h-3 ${ageIndicator.iconClassName}`} />
                         )}
                       </div>
-                      <h4 className="text-sm font-medium text-slate-800 truncate mt-0.5">
+                      <h4 className="text-sm max-[390px]:text-[13px] font-medium text-slate-800 truncate mt-0.5">
                         {req.form_template_name || req.title}
                       </h4>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {ageIndicator && (
                         <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${ageIndicator.badgeClassName}`}
+                          className={`text-[10px] max-[390px]:text-[9px] px-1.5 py-0.5 rounded border font-medium ${ageIndicator.badgeClassName}`}
                         >
                           {ageIndicator.label}
                         </span>
                       )}
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${statusCfg.cls}`}>
+                      <span className={`text-[10px] max-[390px]:text-[9px] px-1.5 py-0.5 rounded border font-medium ${statusCfg.cls}`}>
                         {statusCfg.label}
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 mt-1.5">
+                  <div className="flex items-center justify-between text-xs max-[390px]:text-[11px] text-slate-400 mt-1.5">
                     <span className="truncate">By {req.requester_name}</span>
                     <span className="flex-shrink-0 ml-2">{timeAgo}</span>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-slate-400 min-w-0">
+                  <div className="flex items-center gap-2 mt-1 text-xs max-[390px]:text-[11px] text-slate-400 min-w-0">
                     {req.total_approval_steps > 0 && (
-                      <span className="font-mono text-[10px]">
+                      <span className="font-mono text-[10px] max-[390px]:text-[9px]">
                         Step {req.current_approval_step}/{req.total_approval_steps}
                       </span>
                     )}

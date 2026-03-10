@@ -286,6 +286,8 @@ export default function DashboardPage() {
     navigate("/login");
   };
 
+  const isShowingMobileDetail = !!selectedRequest;
+
   return (
     <div
       className="h-screen flex overflow-hidden bg-white"
@@ -335,16 +337,16 @@ export default function DashboardPage() {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="h-14 border-b border-slate-200 flex items-center justify-between px-4 bg-white flex-shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="min-h-14 border-b border-slate-200 flex items-center justify-between px-3 sm:px-4 py-2 bg-white flex-shrink-0 gap-2">
+          <div className="flex items-center gap-3 min-w-0">
             <button
-              className="lg:hidden p-1.5 hover:bg-slate-100 rounded"
+              className="lg:hidden p-1.5 hover:bg-slate-100 rounded flex-shrink-0"
               onClick={() => setShowMobileSidebar(true)}
               data-testid="mobile-menu-button"
             >
               <Menu className="w-5 h-5 text-slate-600" />
             </button>
-            <h2 className="text-sm font-semibold text-slate-800">
+            <h2 className="text-sm font-semibold text-slate-800 truncate">
               {activeFilter === "all"
                 ? "All Requests"
                 : activeFilter === "my_requests"
@@ -358,14 +360,15 @@ export default function DashboardPage() {
               </span>
             </h2>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
             {canCreateRequest && (
               <Button
                 data-testid="new-request-button"
                 onClick={() => setShowCreateDialog(true)}
-                className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium"
+                className="h-8 px-2 sm:px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium"
               >
-                <Plus className="w-3.5 h-3.5 mr-1" /> New Request
+                <Plus className="w-3.5 h-3.5 sm:mr-1" />
+                <span className="hidden sm:inline">New Request</span>
               </Button>
             )}
             <div className="relative">
@@ -420,8 +423,34 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 2-panel: list + detail (resizable divider) */}
-        <div className="flex-1 flex overflow-hidden min-h-0">
+        <div className="flex-1 min-h-0 overflow-hidden lg:hidden bg-slate-50/40">
+          {isShowingMobileDetail ? (
+            <div className="h-full min-w-0 bg-white">
+              <RequestDetail
+                request={selectedRequest}
+                currentUser={user}
+                onAction={handleAction}
+                onCancel={handleCancel}
+                departments={departments}
+                onBack={() => setSelectedRequest(null)}
+              />
+            </div>
+          ) : (
+            <div className="h-full min-w-0 bg-white">
+              <RequestList
+                requests={requests}
+                selectedRequest={selectedRequest}
+                onSelect={handleSelectRequest}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                loading={loading}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Desktop 2-panel: list + detail */}
+        <div className="hidden lg:flex flex-1 overflow-hidden min-h-0">
           <div
             className="border-r border-slate-200 bg-slate-50/50 flex-shrink-0 overflow-hidden flex flex-col min-w-0"
             style={{ width: listWidth, minWidth: minListWidth }}

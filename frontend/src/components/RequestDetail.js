@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
+  ArrowLeft,
   FileText,
   Clock,
   CheckCircle2,
@@ -174,6 +175,7 @@ export default function RequestDetail({
   onAction,
   onCancel,
   departments,
+  onBack,
 }) {
   const [comments, setComments] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
@@ -182,7 +184,7 @@ export default function RequestDetail({
   if (!request) {
     return (
       <div
-        className="h-full flex items-center justify-center p-8"
+        className="h-full flex items-center justify-center p-6 sm:p-8"
         data-testid="request-detail-empty"
       >
         <div className="text-center">
@@ -245,8 +247,22 @@ export default function RequestDetail({
     : "";
 
   return (
-    <div className="h-full overflow-y-auto" data-testid="request-detail">
-      <div className="max-w-3xl mx-auto p-6 lg:p-10 animate-fade-in">
+    <div className="h-full overflow-y-auto overflow-x-hidden" data-testid="request-detail">
+      <div className="max-w-3xl mx-auto p-4 sm:p-6 lg:p-10 animate-fade-in">
+        {onBack && (
+          <div className="mb-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onBack}
+              className="h-8 px-2 text-sm text-slate-600"
+              data-testid="request-detail-back"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to requests
+            </Button>
+          </div>
+        )}
         {/* Header */}
         <div className="">
           <div className="flex items-center gap-3 mb-3 flex-wrap">
@@ -264,7 +280,7 @@ export default function RequestDetail({
               </Badge>
             )}
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight break-words">
             {request.form_template_name || request.title}
           </h2>
           <div className="flex items-center gap-4 mt-3 text-sm text-slate-500 flex-wrap">
@@ -332,28 +348,30 @@ export default function RequestDetail({
                       <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold px-3 pt-2">
                         {label}
                       </div>
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-slate-100">
-                            {(value.headers || []).map((h, i) => (
-                              <TableHead key={i} className="text-xs font-medium">
-                                {h}
-                              </TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {(value.rows || []).map((row, ri) => (
-                            <TableRow key={ri}>
-                              {(row || []).map((cell, ci) => (
-                                <TableCell key={ci} className="text-sm py-2">
-                                  {String(cell ?? "") || "-"}
-                                </TableCell>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-slate-100">
+                              {(value.headers || []).map((h, i) => (
+                                <TableHead key={i} className="text-xs font-medium">
+                                  {h}
+                                </TableHead>
                               ))}
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {(value.rows || []).map((row, ri) => (
+                              <TableRow key={ri}>
+                                {(row || []).map((cell, ci) => (
+                                  <TableCell key={ci} className="text-sm py-2">
+                                    {String(cell ?? "") || "-"}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
                   </div>
                 );
@@ -459,7 +477,7 @@ export default function RequestDetail({
               className="mb-3 bg-white text-sm"
               rows={3}
             />
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 data-testid="approve-button"
                 onClick={() => handleAction("approve")}
