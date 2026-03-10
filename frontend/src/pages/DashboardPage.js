@@ -221,8 +221,9 @@ export default function DashboardPage() {
 
   const handleCreateRequest = async (data) => {
     try {
-      await createRequest(data);
+      const res = await createRequest(data);
       toast.success("Request submitted successfully");
+      setSelectedRequest(res.data);
       setShowCreateDialog(false);
       fetchRequests();
       fetchData();
