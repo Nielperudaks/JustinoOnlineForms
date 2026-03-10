@@ -112,6 +112,7 @@ export default function CreateRequestDialog({
   onSubmit,
   onClose,
 }) {
+  const contentRef = useRef(null);
   const sortedDepartments = [...departments].sort((a, b) =>
     (a.name || "").localeCompare(b.name || ""),
   );
@@ -121,6 +122,11 @@ export default function CreateRequestDialog({
   const [formData, setFormData] = useState({});
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+    contentRef.current.scrollTo({ top: 0, behavior: "auto" });
+  }, [step]);
 
 
   const filteredTemplates = templates
@@ -393,7 +399,7 @@ export default function CreateRequestDialog({
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto p-5" >
+        <div ref={contentRef} className="flex-1 overflow-y-auto p-5" >
           {/* Step 1: Select Department */}
           {step === 1 && (
             <div className="grid grid-cols-2 gap-3">
