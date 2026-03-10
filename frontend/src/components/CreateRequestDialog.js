@@ -471,6 +471,17 @@ export default function CreateRequestDialog({
                 </p>
               </div>
 
+              {selectedTemplate.description?.trim() && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Form Description
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {selectedTemplate.description.trim()}
+                  </p>
+                </div>
+              )}
+
               <div className="border-t border-slate-100 pt-4 mt-4">
                 <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
                   Form Fields
