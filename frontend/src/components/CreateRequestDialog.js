@@ -113,9 +113,12 @@ export default function CreateRequestDialog({
   onClose,
 }) {
   const contentRef = useRef(null);
-  const sortedDepartments = [...departments].sort((a, b) =>
-    (a.name || "").localeCompare(b.name || ""),
+  const departmentIdsWithForms = new Set(
+    templates.map((template) => template.department_id),
   );
+  const sortedDepartments = departments
+    .filter((department) => departmentIdsWithForms.has(department.id))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   const [step, setStep] = useState(1); // 1: select dept, 2: select form, 3: fill form
   const [selectedDeptId, setSelectedDeptId] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
@@ -402,29 +405,35 @@ export default function CreateRequestDialog({
         <div ref={contentRef} className="flex-1 overflow-y-auto p-5" >
           {/* Step 1: Select Department */}
           {step === 1 && (
-            <div className="grid grid-cols-2 gap-3">
-              {sortedDepartments.map((dept) => (
-                <button
-                  key={dept.id}
-                  data-testid={`select-dept-${dept.code}`}
-                  className="p-4 text-left border border-slate-200 rounded-lg hover:border-blue-300 hover:bg-blue-50/30 transition-all group"
-                  onClick={() => {
-                    setSelectedDeptId(dept.id);
-                    setStep(2);
-                  }}
-                >
-                  <div className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">
-                    {dept.name}
-                  </div>
-                  <div className="text-xs text-slate-400 mt-1 line-clamp-2">
-                    {dept.description}
-                  </div>
-                  <div className="flex items-center text-[10px] text-blue-500 mt-2 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                    Select <ChevronRight className="w-3 h-3 ml-0.5" />
-                  </div>
-                </button>
-              ))}
-            </div>
+            sortedDepartments.length === 0 ? (
+              <div className="text-center py-8 text-sm text-slate-400">
+                No departments with available forms
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {sortedDepartments.map((dept) => (
+                  <button
+                    key={dept.id}
+                    data-testid={`select-dept-${dept.code}`}
+                    className="p-4 text-left border border-slate-200 rounded-lg hover:border-blue-300 hover:bg-blue-50/30 transition-all group"
+                    onClick={() => {
+                      setSelectedDeptId(dept.id);
+                      setStep(2);
+                    }}
+                  >
+                    <div className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">
+                      {dept.name}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1 line-clamp-2">
+                      {dept.description}
+                    </div>
+                    <div className="flex items-center text-[10px] text-blue-500 mt-2 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                      Select <ChevronRight className="w-3 h-3 ml-0.5" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )
           )}
 
           {/* Step 2: Select Form Template */}
