@@ -101,18 +101,7 @@ export default function FirstLoginTutorialDialog() {
           <DialogHeader className="text-left">
             <DialogTitle className="text-xl text-slate-900">Welcome to Justino Online Forms</DialogTitle>
             <DialogDescription className="mt-2 text-sm text-slate-500">
-              This quick guide appears on first login only. Add your images as
-              <span className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-700">
-                first-login-tutorial-1.png
-              </span>
-              through
-              <span className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-700">
-                first-login-tutorial-4.png
-              </span>
-              inside
-              <span className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-700">
-                frontend/public
-              </span>.
+              This quick guide appears on first login only. 
             </DialogDescription>
           </DialogHeader>
         </div>
