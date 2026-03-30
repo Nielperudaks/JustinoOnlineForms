@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
+import FirstLoginTutorialDialog from "@/components/FirstLoginTutorialDialog";
 import { useAuthStore } from "@/lib/store";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
@@ -16,6 +17,7 @@ function App() {
   return (
     <>
       <Toaster position="top-right" richColors closeButton />
+      <FirstLoginTutorialDialog />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

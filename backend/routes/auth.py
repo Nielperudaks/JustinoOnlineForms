@@ -36,3 +36,17 @@ async def login(req: LoginRequest):
 async def get_me(user=Depends(get_current_user)):
     safe_user = {k: v for k, v in user.items() if k != "password_hash"}
     return safe_user
+
+
+@auth_router.post("/tutorial/viewed")
+async def mark_tutorial_viewed(user=Depends(get_current_user)):
+    viewed_at = datetime.now(timezone.utc).isoformat()
+    updates = {
+        "has_viewed_tutorial": True,
+        "tutorial_viewed_at": viewed_at,
+        "updated_at": viewed_at,
+    }
+    await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    updated_user = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    safe_user = {k: v for k, v in updated_user.items() if k != "password_hash"}
+    return safe_user

@@ -73,12 +73,14 @@ def decode_token(token: str) -> dict:
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = decode_token(credentials.credentials)
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
-    logger.info(f"Login attempt for: {user.get('email', 'Unknown')}")
-    logger.info(f"User found: {bool(user)}")
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    logger.info(f"Login attempt for: {user.get('email', 'Unknown')}")
+    logger.info(f"User found: {bool(user)}")
     if not user.get("is_active", True):
         raise HTTPException(status_code=403, detail="Account disabled")
+    if "has_viewed_tutorial" not in user:
+        user["has_viewed_tutorial"] = False
     return user
 
 

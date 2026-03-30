@@ -21,6 +21,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     department_id: Optional[str] = None
     is_active: Optional[bool] = None
+    has_viewed_tutorial: Optional[bool] = None
 
 
 class PasswordChange(BaseModel):
@@ -62,6 +63,7 @@ async def create_user(req: UserCreate, admin=Depends(require_admin)):
         "name": req.name,
         "role": req.role,
         "department_id": req.department_id,
+        "has_viewed_tutorial": False,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat()
     }

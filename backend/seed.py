@@ -565,6 +565,7 @@ async def seed_data(db):
             "id": str(uuid.uuid4()), "email": email.lower(),
             "password_hash": hash_password(pw), "name": name,
             "role": role, "department_id": dept_map[dept_code],
+            "has_viewed_tutorial": False,
             "is_active": True, "created_at": now.isoformat()
         }
         await db.users.insert_one(doc)

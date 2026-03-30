@@ -26,6 +26,7 @@ api.interceptors.response.use(
 // Auth
 export const login = (data) => api.post('/auth/login', data);
 export const getMe = () => api.get('/auth/me');
+export const markTutorialViewed = () => api.post('/auth/tutorial/viewed');
 
 // Users
 export const listUsers = (params) => api.get('/users', { params });
