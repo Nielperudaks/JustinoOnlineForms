@@ -40,6 +40,8 @@ function getRequestAgeIndicator(request) {
 export default function RequestList({
   requests, selectedRequest, onSelect, searchQuery, onSearchChange, loading
 }) {
+  const showInitialLoading = loading && requests.length === 0;
+
   return (
     <div className="h-full flex flex-col min-h-0 min-w-0" data-testid="request-list">
       {/* Search bar */}
@@ -54,13 +56,32 @@ export default function RequestList({
             className="pl-9 h-9 text-sm max-[390px]:text-[13px] bg-white border-slate-200"
           />
         </div>
+        <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-slate-100">
+          <div
+            className={`h-full rounded-full bg-blue-500 transition-all duration-300 ${
+              loading ? "w-full opacity-100 animate-pulse" : "w-0 opacity-0"
+            }`}
+          />
+        </div>
       </div>
 
       {/* Request items */}
       <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="animate-pulse-slow text-sm text-slate-400">Loading requests...</div>
+        {showInitialLoading ? (
+          <div className="p-4 space-y-3">
+            {[1, 2, 3, 4].map((item) => (
+              <div
+                key={item}
+                className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm"
+              >
+                <div className="h-3 w-20 rounded bg-slate-100 animate-pulse" />
+                <div className="mt-3 h-4 w-3/4 rounded bg-slate-100 animate-pulse" />
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <div className="h-3 w-24 rounded bg-slate-100 animate-pulse" />
+                  <div className="h-3 w-16 rounded bg-slate-100 animate-pulse" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : requests.length === 0 ? (
           <div className="p-8 text-center">

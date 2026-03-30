@@ -6,13 +6,13 @@ import { useEffect, useRef } from "react";
  *
  * @param {() => void | Promise<void>} refetch - Function to call to refresh data
  * @param {Object} options
- * @param {number} [options.intervalMs=60000] - Polling interval in ms (default 15s)
+ * @param {number} [options.intervalMs=120000] - Polling interval in ms (default 15s)
  * @param {boolean} [options.refetchOnFocus=true] - Refetch when window gains focus
  * @param {boolean} [options.enabled=true] - Whether polling/focus refetch is active
  */
 export function useReactiveRefresh(refetch, options = {}) {
   const {
-    intervalMs = 60000,
+    intervalMs = 120000,
     refetchOnFocus = true,
     enabled = true,
   } = options;
