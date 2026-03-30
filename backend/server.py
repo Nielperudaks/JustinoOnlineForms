@@ -66,7 +66,9 @@ async def websocket_endpoint(ws: WebSocket):
     await manager.connect(ws)
     try:
         while True:
-            await ws.receive_text()  # keep alive
+            message = await ws.receive_text()
+            if message == "ping":
+                await ws.send_text("pong")
     except:
         manager.disconnect(ws)
 

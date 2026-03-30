@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
 import { useLiveUpdates } from "@/hooks/useLiveUpdates";
+import { useReactiveRefresh } from "@/hooks/useReactiveRefresh";
 
 import {
   listRequests,
@@ -207,17 +208,27 @@ export default function DashboardPage() {
     },
   });
 
-  // When requests list is refreshed (e.g. by polling), refetch the selected
-  // request so the detail panel shows latest approval state without full reload.
-  // const selectedIdRef = useRef(selectedRequest?.id);
-  // selectedIdRef.current = selectedRequest?.id;
-  // useEffect(() => {
-  //   const id = selectedIdRef.current;
-  //   if (!id) return;
-  //   getRequest(id)
-  //     .then((res) => setSelectedRequest((prev) => (prev?.id === id ? res.data : prev)))
-  //     .catch(() => {});
-  // }, [requests]);
+  useReactiveRefresh(
+    () => {
+      fetchRequests();
+      fetchData();
+
+      if (selectedRequest?.id) {
+        return getRequest(selectedRequest.id)
+          .then((res) => setSelectedRequest((prev) => (
+            prev?.id === selectedRequest.id ? res.data : prev
+          )))
+          .catch(() => {});
+      }
+
+      return Promise.resolve();
+    },
+    {
+      enabled: !!user,
+      intervalMs: 30000,
+      refetchOnFocus: true,
+    }
+  );
 
   const handleCreateRequest = async (data) => {
     try {
