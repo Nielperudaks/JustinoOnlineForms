@@ -42,6 +42,11 @@ api_router.include_router(dashboard_router)
 async def root():
     return {"message": "Justino Online Forms API"}
 
+
+@api_router.get("/realtime/status")
+async def realtime_status():
+    return await manager.get_status()
+
 app.include_router(api_router)
 
 app.add_middleware(

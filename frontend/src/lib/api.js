@@ -65,5 +65,6 @@ export const markAllNotificationsRead = () => api.post('/notifications/read-all'
 
 // Dashboard
 export const getDashboardStats = () => api.get('/dashboard/stats');
+export const getRealtimeStatus = () => api.get('/realtime/status');
 
 export default api;

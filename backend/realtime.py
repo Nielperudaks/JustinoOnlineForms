@@ -18,25 +18,36 @@ class ConnectionManager:
         self.listener_task: Optional[asyncio.Task] = None
         self.redis_channel = os.environ.get("REDIS_CHANNEL", "justino:realtime")
         self.instance_id = str(uuid.uuid4())
+        self.redis_enabled = False
+        self.redis_connected = False
+        self.last_error: Optional[str] = None
 
     async def startup(self):
         redis_url = os.environ.get("REDIS_URL")
         if not redis_url:
+            self.redis_enabled = False
+            self.redis_connected = False
+            self.last_error = None
             logger.info("Redis realtime disabled: REDIS_URL not set")
             return
 
+        self.redis_enabled = True
         try:
             self.redis = Redis.from_url(redis_url, decode_responses=True)
             await self.redis.ping()
             self.pubsub = self.redis.pubsub()
             await self.pubsub.subscribe(self.redis_channel)
             self.listener_task = asyncio.create_task(self._listen_for_messages())
+            self.redis_connected = True
+            self.last_error = None
             logger.info("Redis realtime enabled on channel %s", self.redis_channel)
         except Exception as exc:
             logger.exception("Failed to initialize Redis realtime: %s", exc)
             self.redis = None
             self.pubsub = None
             self.listener_task = None
+            self.redis_connected = False
+            self.last_error = str(exc)
 
     async def shutdown(self):
         if self.listener_task:
@@ -61,6 +72,7 @@ class ConnectionManager:
             except Exception as exc:
                 logger.warning("Error closing Redis connection: %s", exc)
             self.redis = None
+        self.redis_connected = False
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -102,6 +114,8 @@ class ConnectionManager:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            self.redis_connected = False
+            self.last_error = str(exc)
             logger.exception("Redis realtime listener stopped unexpectedly: %s", exc)
 
     async def broadcast(self, event: str, payload: dict):
@@ -114,11 +128,40 @@ class ConnectionManager:
         if self.redis:
             try:
                 await self.redis.publish(self.redis_channel, json.dumps(event_message))
+                self.redis_connected = True
                 return
             except Exception as exc:
+                self.redis_connected = False
+                self.last_error = str(exc)
                 logger.warning("Redis publish failed, falling back to local broadcast: %s", exc)
 
         await self._broadcast_local(event, payload)
+
+    async def get_status(self):
+        ping_ok = False
+
+        if self.redis:
+            try:
+                ping_ok = bool(await self.redis.ping())
+                self.redis_connected = ping_ok
+                if ping_ok:
+                    self.last_error = None
+            except Exception as exc:
+                self.redis_connected = False
+                self.last_error = str(exc)
+
+        mode = "redis" if self.redis_enabled and self.redis_connected else "local"
+
+        return {
+            "mode": mode,
+            "redis_enabled": self.redis_enabled,
+            "redis_connected": self.redis_connected,
+            "redis_channel": self.redis_channel if self.redis_enabled else None,
+            "instance_id": self.instance_id,
+            "active_connections": len(self.active_connections),
+            "last_error": self.last_error,
+            "ping_ok": ping_ok if self.redis_enabled else None,
+        }
 
 
 manager = ConnectionManager()
