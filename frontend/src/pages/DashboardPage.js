@@ -26,6 +26,9 @@ import NotificationPanel from "@/components/NotificationPanel";
 import { Button } from "@/components/ui/button";
 import { Plus, Bell, Settings, LogOut, Menu, X } from "lucide-react";
 
+const INITIAL_REQUEST_PAGE_SIZE = 12;
+const REQUESTS_LOAD_MORE_SIZE = 5;
+
 export default function DashboardPage() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
@@ -49,6 +52,8 @@ export default function DashboardPage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMoreRequests, setLoadingMoreRequests] = useState(false);
+  const [hasMoreRequests, setHasMoreRequests] = useState(false);
 
   const [listWidth, setListWidth] = useState(480);
   const minListWidth = 240;
@@ -101,10 +106,16 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const fetchRequests = useCallback(async () => {
-    setLoading(true);
+  const fetchRequests = useCallback(async ({ offset = 0, append = false } = {}) => {
+    if (append) {
+      setLoadingMoreRequests(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
-      const params = { limit: 100 };
+      const limit = offset === 0 ? INITIAL_REQUEST_PAGE_SIZE : REQUESTS_LOAD_MORE_SIZE;
+      const params = { offset, limit };
       const isSuperAdmin = user?.role === "super_admin";
       // Only super admin can filter by department
       if (isSuperAdmin && selectedDept) params.department_id = selectedDept;
@@ -117,12 +128,28 @@ export default function DashboardPage() {
       if (searchQuery) params.search = searchQuery;
 
       const res = await listRequests(params);
-      setRequests(res.data.items);
+      let nextLoadedCount = res.data.items.length;
+
+      setRequests((prev) => {
+        if (!append) {
+          return res.data.items;
+        }
+
+        const seenIds = new Set(prev.map((item) => item.id));
+        const nextItems = res.data.items.filter((item) => !seenIds.has(item.id));
+        nextLoadedCount = prev.length + nextItems.length;
+        return [...prev, ...nextItems];
+      });
       setTotalRequests(res.data.total);
+      setHasMoreRequests(nextLoadedCount < res.data.total);
     } catch (err) {
       console.error("Fetch requests error:", err);
     } finally {
-      setLoading(false);
+      if (append) {
+        setLoadingMoreRequests(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [user?.role, selectedDept, activeFilter, searchQuery]);
 
@@ -150,7 +177,7 @@ export default function DashboardPage() {
     fetchData();
   }, [fetchData]);
   useEffect(() => {
-    fetchRequests();
+    fetchRequests({ offset: 0, append: false });
   }, [fetchRequests]);
   useEffect(() => {
     fetchTemplates();
@@ -301,6 +328,14 @@ export default function DashboardPage() {
     logout();
     navigate("/login");
   };
+
+  const handleLoadMoreRequests = useCallback(() => {
+    if (loading || loadingMoreRequests || !hasMoreRequests) {
+      return;
+    }
+
+    fetchRequests({ offset: requests.length, append: true });
+  }, [fetchRequests, hasMoreRequests, loading, loadingMoreRequests, requests.length]);
 
   const isShowingMobileDetail = !!selectedRequest;
 
@@ -460,6 +495,9 @@ export default function DashboardPage() {
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 loading={loading}
+                loadingMore={loadingMoreRequests}
+                hasMore={hasMoreRequests}
+                onLoadMore={handleLoadMoreRequests}
               />
             </div>
           )}
@@ -478,6 +516,9 @@ export default function DashboardPage() {
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
               loading={loading}
+              loadingMore={loadingMoreRequests}
+              hasMore={hasMoreRequests}
+              onLoadMore={handleLoadMoreRequests}
             />
           </div>
           <div

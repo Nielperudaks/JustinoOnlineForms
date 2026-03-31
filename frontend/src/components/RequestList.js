@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Search, FileText, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { differenceInHours, formatDistanceToNow } from "date-fns";
 
@@ -39,9 +40,41 @@ function getRequestAgeIndicator(request) {
 }
 
 export default function RequestList({
-  requests, selectedRequest, onSelect, searchQuery, onSearchChange, loading
+  requests, selectedRequest, onSelect, searchQuery, onSearchChange, loading, loadingMore = false, hasMore = false, onLoadMore
 }) {
+  const scrollAreaRef = useRef(null);
   const showInitialLoading = loading && requests.length === 0;
+
+  const loadMoreRequests = () => {
+    if (loading || loadingMore || !hasMore || !onLoadMore) {
+      return;
+    }
+
+    onLoadMore();
+  };
+
+  const handleScroll = (event) => {
+    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+    const reachedBottom = scrollHeight - scrollTop - clientHeight <= 24;
+
+    if (reachedBottom) {
+      loadMoreRequests();
+    }
+  };
+
+  useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
+
+    if (!viewport) {
+      return undefined;
+    }
+
+    viewport.addEventListener("scroll", handleScroll);
+
+    return () => {
+      viewport.removeEventListener("scroll", handleScroll);
+    };
+  }, [hasMore, loading, loadingMore, onLoadMore]);
 
   return (
     <div className="h-full flex flex-col min-h-0 min-w-0" data-testid="request-list">
@@ -67,7 +100,7 @@ export default function RequestList({
       </div>
 
       {/* Request items */}
-      <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0 overflow-y-auto">
         {showInitialLoading ? (
           <div className="p-4 space-y-3">
             {[1, 2, 3, 4].map((item) => (
@@ -94,7 +127,6 @@ export default function RequestList({
           <div>
             {requests.map((req, idx) => {
               const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG.in_progress;
-              const StatusIcon = statusCfg.icon;
               const isActive = selectedRequest?.id === req.id;
               const ageIndicator = getRequestAgeIndicator(req);
               const timeAgo = req.created_at ? formatDistanceToNow(new Date(req.created_at), { addSuffix: true }) : "";
@@ -146,6 +178,18 @@ export default function RequestList({
                 </div>
               );
             })}
+            {loadingMore && (
+              <div className="px-4 py-3 border-b border-slate-100">
+                <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="mt-3 h-4 w-3/4" />
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <Skeleton className="h-3 w-24" />
+                    <Skeleton className="h-3 w-16" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>

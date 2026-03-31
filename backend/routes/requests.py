@@ -29,6 +29,7 @@ async def list_requests(
     my_requests: Optional[bool] = False,
     my_approvals: Optional[bool] = False,
     search: Optional[str] = None,
+    offset: int = Query(0, ge=0),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     user=Depends(get_current_user)
@@ -61,6 +62,18 @@ async def list_requests(
             },
         ]
 
+    if search:
+        escaped_search = search.strip()
+        if escaped_search:
+            search_query = {
+                "$or": [
+                    {"title": {"$regex": escaped_search, "$options": "i"}},
+                    {"form_template_name": {"$regex": escaped_search, "$options": "i"}},
+                    {"request_number": {"$regex": escaped_search, "$options": "i"}},
+                ]
+            }
+            query = {"$and": [query, search_query]} if query else search_query
+
     # Non-super-admin: restrict to user-related requests (their requests + any request they're in the approval chain)
     role = user.get("role", "")
     if role != "super_admin":
@@ -74,20 +87,10 @@ async def list_requests(
         query = {"$and": [query, user_scope]} if query else user_scope
 
     total = await db.requests.count_documents(query)
-    skip = (page - 1) * limit
+    skip = offset if offset else (page - 1) * limit
     reqs = await db.requests.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
 
-    if search:
-        s = search.lower()
-        reqs = [
-            r
-            for r in reqs
-            if s in r.get("title", "").lower()
-            or s in r.get("form_template_name", "").lower()
-            or s in r.get("request_number", "").lower()
-        ]
-
-    return {"items": reqs, "total": total, "page": page, "limit": limit}
+    return {"items": reqs, "total": total, "page": page, "limit": limit, "offset": skip}
 
 
 @requests_router.get("/{request_id}")
