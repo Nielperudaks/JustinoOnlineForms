@@ -5,6 +5,7 @@ uvicorn[standard]==0.25.0
 # Database
 pymongo==4.5.0
 motor==3.3.1
+redis==6.4.0
 
 # Authentication / Security
 python-jose==3.5.0

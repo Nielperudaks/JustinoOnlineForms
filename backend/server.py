@@ -56,9 +56,11 @@ app.add_middleware(
 async def startup_event():
     from seed import seed_data
     await seed_data(db)
+    await manager.startup()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    await manager.shutdown()
     client.close()
 
 @app.websocket("/ws")
