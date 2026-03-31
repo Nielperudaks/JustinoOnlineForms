@@ -18,7 +18,7 @@ class RequestCreate(BaseModel):
 
 
 class RequestAction(BaseModel):
-    action: str  # approve, reject
+    action: str  # approve, reject, fulfill
     comments: Optional[str] = ""
 
 
@@ -35,19 +35,31 @@ async def list_requests(
 ):
     query = {}
     if status:
-        query["status"] = status
+        if status == "pending":
+            query["status"] = {"$in": ["in_progress", "pending"]}
+        else:
+            query["status"] = status
     if department_id:
         query["department_id"] = department_id
     if my_requests:
         query["requester_id"] = user["id"]
     if my_approvals:
-        query["approvals"] = {
-            "$elemMatch": {
-                "approver_id": user["id"],
-                "status": "pending"
-            }
-        }
-        query["status"] = "in_progress"
+        query["$or"] = [
+            {
+                "approvals": {
+                    "$elemMatch": {
+                        "approver_id": user["id"],
+                        "status": "pending"
+                    }
+                },
+                "status": "in_progress",
+            },
+            {
+                "custodian.user_id": user["id"],
+                "custodian.status": "pending",
+                "status": "pending",
+            },
+        ]
 
     # Non-super-admin: restrict to user-related requests (their requests + any request they're in the approval chain)
     role = user.get("role", "")
@@ -55,7 +67,8 @@ async def list_requests(
         user_scope = {
             "$or": [
                 {"requester_id": user["id"]},
-                {"approvals": {"$elemMatch": {"approver_id": user["id"]}}}  # in chain: pending, approved, or rejected
+                {"approvals": {"$elemMatch": {"approver_id": user["id"]}}},
+                {"custodian.user_id": user["id"]},
             ]
         }
         query = {"$and": [query, user_scope]} if query else user_scope
@@ -87,7 +100,8 @@ async def get_request(request_id: str, user=Depends(get_current_user)):
         uid = user["id"]
         is_requester = req.get("requester_id") == uid
         is_approver = any(a.get("approver_id") == uid for a in req.get("approvals", []))
-        if not is_requester and not is_approver:
+        is_custodian = req.get("custodian", {}).get("user_id") == uid
+        if not is_requester and not is_approver and not is_custodian:
             raise HTTPException(status_code=403, detail="You do not have access to this request")
     # Populate requester_department_id for older requests that don't have it
     if "requester_department_id" not in req and req.get("requester_id"):
@@ -114,6 +128,7 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     requester_dept_id = user.get("department_id", "")
     seen_approver_ids = set()
     next_step_number = 1
+    custodian_doc = None
 
     for step in tmpl.get("approver_chain", []):
         approver_id = step["user_id"]
@@ -154,7 +169,35 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
 
         next_step_number += 1
 
-    initial_status = "in_progress" if approvals else "approved"
+    tmpl_custodian = tmpl.get("custodian")
+    if tmpl_custodian and tmpl_custodian.get("user_id"):
+        custodian_user = await db.users.find_one(
+            {"id": tmpl_custodian["user_id"], "is_active": True},
+            {"_id": 0},
+        )
+        if not custodian_user:
+            raise HTTPException(
+                status_code=400,
+                detail="The assigned custodian for this form is not available. Please update the form custodian.",
+            )
+        custodian_doc = {
+            "user_id": custodian_user["id"],
+            "user_name": tmpl_custodian.get("user_name") or custodian_user.get("name", "Custodian"),
+            "status": "waiting" if approvals else "pending",
+            "comments": "",
+            "acted_at": None,
+        }
+
+    total_steps = len(approvals) + (1 if custodian_doc else 0)
+    if approvals:
+        initial_status = "in_progress"
+        current_step = 1
+    elif custodian_doc:
+        initial_status = "pending"
+        current_step = 1
+    else:
+        initial_status = "approved"
+        current_step = 0
 
     request_doc = {
         "id": str(uuid.uuid4()),
@@ -170,9 +213,10 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
         "form_data": req.form_data,
         "notes": req.notes or "",
         "status": initial_status,
-        "current_approval_step": 1 if approvals else 0,
-        "total_approval_steps": len(approvals),
+        "current_approval_step": current_step,
+        "total_approval_steps": total_steps,
         "approvals": approvals,
+        "custodian": custodian_doc,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -180,7 +224,7 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     await db.requests.insert_one(request_doc)
     result = {k: v for k, v in request_doc.items() if k != "_id"}
 
-    # Notify first approver
+    # Notify first approver or custodian
     if approvals:
         first_approver = await db.users.find_one({"id": approvals[0]["approver_id"]}, {"_id": 0})
         if first_approver:
@@ -208,6 +252,32 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
                     "type": notif["type"]
                 }
             )
+    elif custodian_doc:
+        custodian_user = await db.users.find_one({"id": custodian_doc["user_id"]}, {"_id": 0})
+        notif = {
+            "id": str(uuid.uuid4()),
+            "user_id": custodian_doc["user_id"],
+            "request_id": result["id"],
+            "request_number": request_number,
+            "message": f"Request '{display_title}' is ready for fulfillment confirmation",
+            "type": "custodian_required",
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.notifications.insert_one(notif)
+        await send_email_notification(
+            custodian_user.get("email", "") if custodian_user else "",
+            f"Fulfillment Required: {request_number} - {display_title}",
+            f"<h3>Request Ready for Fulfillment</h3><p><b>{request_number}</b> - {display_title}</p><p>Requested by: {user['name']}</p><p>Please fulfill the request and confirm once it is completed.</p>"
+        )
+        await manager.broadcast(
+            event="NOTIFICATION_CREATED",
+            payload={
+                "user_id": notif["user_id"],
+                "notification_id": notif["id"],
+                "type": notif["type"]
+            }
+        )
 
     await manager.broadcast(
         event="REQUEST_CREATED",
@@ -275,18 +345,120 @@ async def cancel_request(request_id: str, user=Depends(get_current_user)):
 
 @requests_router.post("/{request_id}/action")
 async def action_request(request_id: str, action: RequestAction, user=Depends(get_current_user)):
-    role = user.get("role", "")
-    if role not in ("approver", "both", "manager", "super_admin"):
-        raise HTTPException(status_code=403, detail="Only approvers can approve or reject requests")
     req = await db.requests.find_one({"id": request_id}, {"_id": 0})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    if req["status"] != "in_progress":
+    if req["status"] not in ("in_progress", "pending"):
         raise HTTPException(status_code=400, detail=f"Request is already {req['status']}")
     request_display_name = req.get("form_template_name") or req.get("title") or "Request"
 
     current_step = req.get("current_approval_step", 1)
     approvals = req.get("approvals", [])
+    custodian = req.get("custodian")
+    role = user.get("role", "")
+
+    if action.action in ("approve", "reject") and role not in ("approver", "both", "manager", "super_admin"):
+        raise HTTPException(status_code=403, detail="Only approvers can approve or reject requests")
+
+    if action.action == "fulfill":
+        if not custodian or custodian.get("user_id") != user["id"]:
+            raise HTTPException(status_code=403, detail="You are not the assigned custodian for this request")
+        if req["status"] != "pending" or custodian.get("status") != "pending":
+            raise HTTPException(status_code=400, detail="This request is not awaiting custodian confirmation")
+
+        now = datetime.now(timezone.utc).isoformat()
+        custodian["status"] = "fulfilled"
+        custodian["comments"] = action.comments or ""
+        custodian["acted_at"] = now
+
+        await db.requests.update_one(
+            {"id": request_id},
+            {"$set": {
+                "custodian": custodian,
+                "status": "approved",
+                "current_approval_step": req.get("total_approval_steps", current_step),
+                "updated_at": now
+            }},
+        )
+
+        approver_ids = list({a.get("approver_id") for a in approvals if a.get("approver_id")})
+        approver_users = []
+        if approver_ids:
+            approver_users = await db.users.find(
+                {"id": {"$in": approver_ids}},
+                {"_id": 0},
+            ).to_list(len(approver_ids))
+
+        for approver_user in approver_users:
+            notif = {
+                "id": str(uuid.uuid4()),
+                "user_id": approver_user["id"],
+                "request_id": request_id,
+                "request_number": req["request_number"],
+                "message": f"Request '{request_display_name}' was fulfilled and confirmed by {user['name']}",
+                "type": "request_completed",
+                "is_read": False,
+                "created_at": now
+            }
+            await db.notifications.insert_one(notif)
+            await send_email_notification(
+                approver_user.get("email", ""),
+                f"Request Completed: {req['request_number']}",
+                f"<h3>Request Completed</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>Confirmed by custodian: {user['name']}</p><p>Comments: {action.comments or 'None'}</p>"
+            )
+            await manager.broadcast(
+                event="NOTIFICATION_CREATED",
+                payload={
+                    "user_id": notif["user_id"],
+                    "notification_id": notif["id"],
+                    "type": notif["type"]
+                }
+            )
+
+        requester_notif = {
+            "id": str(uuid.uuid4()),
+            "user_id": req["requester_id"],
+            "request_id": request_id,
+            "request_number": req["request_number"],
+            "message": f"Your request '{request_display_name}' has been fulfilled",
+            "type": "request_approved",
+            "is_read": False,
+            "created_at": now
+        }
+        await db.notifications.insert_one(requester_notif)
+        await send_email_notification(
+            req.get("requester_email", ""),
+            f"Request Approved: {req['request_number']}",
+            f"<h3>Request Fulfilled</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>Confirmed by custodian: {user['name']}</p><p>Your request is now complete.</p>"
+        )
+        await manager.broadcast(
+            event="NOTIFICATION_CREATED",
+            payload={
+                "user_id": requester_notif["user_id"],
+                "notification_id": requester_notif["id"],
+                "type": requester_notif["type"]
+            }
+        )
+        await manager.broadcast(
+            event="REQUEST_APPROVED",
+            payload={
+                "request_id": request_id,
+                "request_number": req["request_number"],
+                "department_id": req["department_id"],
+                "status": "approved"
+            }
+        )
+
+        updated = await db.requests.find_one({"id": request_id}, {"_id": 0})
+        await manager.broadcast(
+            event="REQUEST_STATE_CHANGED",
+            payload={
+                "request_id": updated["id"],
+                "status": updated["status"],
+                "current_step": updated.get("current_approval_step", 0)
+            }
+        )
+        return updated
 
     current_approval = None
     for a in approvals:
@@ -407,47 +579,83 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                     )
 
         else:
-            await db.requests.update_one({"id": request_id}, {"$set": {
-                "approvals": approvals,
-                "status": "approved",
-                "updated_at": now
-            }})
-            notif = {
-                "id": str(uuid.uuid4()),
-                "user_id": req["requester_id"],
-                "request_id": request_id,
-                "request_number": req["request_number"],
-                "message": f"Your request '{request_display_name}' has been fully approved!",
-                "type": "request_approved",
-                "is_read": False,
-                "created_at": now
-            }
-            await db.notifications.insert_one(notif)
-            await send_email_notification(
-                req.get("requester_email", ""),
-                f"Request Approved: {req['request_number']}",
-                f"<h3>Request Approved</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>All approvers have signed off.</p>"
-            )
-            await manager.broadcast(
-                event="NOTIFICATION_CREATED",
-                payload={
-                    "user_id": notif["user_id"],
-                    "notification_id": notif["id"],
-                    "type": notif["type"]
-                }
-            )
-            await manager.broadcast(
-                event="REQUEST_APPROVED",
-                payload={
+            if custodian and custodian.get("user_id"):
+                custodian["status"] = "pending"
+                await db.requests.update_one({"id": request_id}, {"$set": {
+                    "approvals": approvals,
+                    "custodian": custodian,
+                    "status": "pending",
+                    "current_approval_step": current_step + 1,
+                    "updated_at": now
+                }})
+                custodian_user = await db.users.find_one({"id": custodian["user_id"]}, {"_id": 0})
+                if custodian_user:
+                    notif = {
+                        "id": str(uuid.uuid4()),
+                        "user_id": custodian_user["id"],
+                        "request_id": request_id,
+                        "request_number": req["request_number"],
+                        "message": f"Request '{request_display_name}' is ready for fulfillment confirmation",
+                        "type": "custodian_required",
+                        "is_read": False,
+                        "created_at": now
+                    }
+                    await db.notifications.insert_one(notif)
+                    await send_email_notification(
+                        custodian_user.get("email", ""),
+                        f"Fulfillment Required: {req['request_number']}",
+                        f"<h3>Request Ready for Fulfillment</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>All approvers have approved this request.</p><p>Please fulfill it and confirm completion.</p>"
+                    )
+                    await manager.broadcast(
+                        event="NOTIFICATION_CREATED",
+                        payload={
+                            "user_id": notif["user_id"],
+                            "notification_id": notif["id"],
+                            "type": notif["type"]
+                        }
+                    )
+            else:
+                await db.requests.update_one({"id": request_id}, {"$set": {
+                    "approvals": approvals,
+                    "status": "approved",
+                    "updated_at": now
+                }})
+                notif = {
+                    "id": str(uuid.uuid4()),
+                    "user_id": req["requester_id"],
                     "request_id": request_id,
                     "request_number": req["request_number"],
-                    "department_id": req["department_id"],
-                    "status": "approved"
+                    "message": f"Your request '{request_display_name}' has been fully approved!",
+                    "type": "request_approved",
+                    "is_read": False,
+                    "created_at": now
                 }
-            )
+                await db.notifications.insert_one(notif)
+                await send_email_notification(
+                    req.get("requester_email", ""),
+                    f"Request Approved: {req['request_number']}",
+                    f"<h3>Request Approved</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>All approvers have signed off.</p>"
+                )
+                await manager.broadcast(
+                    event="NOTIFICATION_CREATED",
+                    payload={
+                        "user_id": notif["user_id"],
+                        "notification_id": notif["id"],
+                        "type": notif["type"]
+                    }
+                )
+                await manager.broadcast(
+                    event="REQUEST_APPROVED",
+                    payload={
+                        "request_id": request_id,
+                        "request_number": req["request_number"],
+                        "department_id": req["department_id"],
+                        "status": "approved"
+                    }
+                )
 
     else:
-        raise HTTPException(status_code=400, detail="Invalid action. Use 'approve' or 'reject'")
+        raise HTTPException(status_code=400, detail="Invalid action. Use 'approve', 'reject', or 'fulfill'")
 
     updated = await db.requests.find_one({"id": request_id}, {"_id": 0})
 

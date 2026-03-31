@@ -27,12 +27,18 @@ class ApproverStep(BaseModel):
     user_name: Optional[str] = ""
 
 
+class CustodianAssignment(BaseModel):
+    user_id: str
+    user_name: Optional[str] = ""
+
+
 class TemplateCreate(BaseModel):
     department_id: str
     name: str
     description: Optional[str] = ""
     fields: List[FormField]
     approver_chain: List[ApproverStep] = []
+    custodian: Optional[CustodianAssignment] = None
 
 
 class TemplateUpdate(BaseModel):
@@ -40,6 +46,7 @@ class TemplateUpdate(BaseModel):
     description: Optional[str] = None
     fields: Optional[List[FormField]] = None
     approver_chain: Optional[List[ApproverStep]] = None
+    custodian: Optional[CustodianAssignment] = None
     is_active: Optional[bool] = None
 
 
@@ -81,6 +88,7 @@ async def create_template(req: TemplateCreate, admin=Depends(require_admin)):
         "description": req.description or "",
         "fields": [f.model_dump() for f in req.fields],
         "approver_chain": [a.model_dump() for a in req.approver_chain],
+        "custodian": req.custodian.model_dump() if req.custodian else None,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -91,15 +99,16 @@ async def create_template(req: TemplateCreate, admin=Depends(require_admin)):
 @templates_router.put("/{template_id}")
 async def update_template(template_id: str, req: TemplateUpdate, admin=Depends(require_admin)):
     updates = {}
-    data = req.model_dump()
+    data = req.model_dump(exclude_unset=True)
     for k, v in data.items():
-        if v is not None:
-            if k == "fields":
-                updates[k] = [f if isinstance(f, dict) else f.model_dump() for f in v]
-            elif k == "approver_chain":
-                updates[k] = [a if isinstance(a, dict) else a.model_dump() for a in v]
-            else:
-                updates[k] = v
+        if k == "fields":
+            updates[k] = [f if isinstance(f, dict) else f.model_dump() for f in v]
+        elif k == "approver_chain":
+            updates[k] = [a if isinstance(a, dict) else a.model_dump() for a in v]
+        elif k == "custodian":
+            updates[k] = None if v is None else (v if isinstance(v, dict) else v.model_dump())
+        else:
+            updates[k] = v
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()

@@ -3,6 +3,7 @@ import jwt
 import asyncio
 import logging
 import resend
+from email_validator import EmailNotValidError, validate_email
 from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
@@ -35,7 +36,10 @@ _client = AsyncIOMotorClient(mongo_url)
 db = _client[os.environ['DB_NAME']]
 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
-SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', '')
+EMAIL_FROM_NAME = os.environ.get('EMAIL_FROM_NAME', 'Justino Online Forms')
+REPLY_TO_EMAIL = os.environ.get('REPLY_TO_EMAIL', '')
+RESEND_ALLOW_TEST_MODE = os.environ.get('RESEND_ALLOW_TEST_MODE', 'false').lower() == 'true'
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
 
@@ -90,18 +94,54 @@ async def require_admin(user=Depends(get_current_user)):
     return user
 
 
+def normalize_email_address(email_value: str) -> str:
+    normalized = validate_email(email_value, check_deliverability=False)
+    return normalized.normalized
+
+
+def build_sender_address() -> str:
+    if not SENDER_EMAIL:
+        raise ValueError("SENDER_EMAIL is not configured")
+
+    sender_email = normalize_email_address(SENDER_EMAIL)
+    if sender_email.lower().endswith("@resend.dev") and not RESEND_ALLOW_TEST_MODE:
+        raise ValueError(
+            "SENDER_EMAIL is using Resend's test sender. Set SENDER_EMAIL to an address on your verified domain "
+            "to deliver email to arbitrary recipients."
+        )
+
+    if EMAIL_FROM_NAME:
+        return f"{EMAIL_FROM_NAME} <{sender_email}>"
+
+    return sender_email
+
+
 async def send_email_notification(to_email: str, subject: str, html: str):
     if not RESEND_API_KEY:
         logger.info(f"Email skipped (no API key): {subject} -> {to_email}")
         return
+
+    if not to_email:
+        logger.info(f"Email skipped (no recipient): {subject}")
+        return
+
     try:
+        recipient_email = normalize_email_address(to_email)
+        sender_address = build_sender_address()
         params = {
-            "from": SENDER_EMAIL,
-            "to": [to_email],
+            "from": sender_address,
+            "to": [recipient_email],
             "subject": subject,
             "html": html
         }
-        await asyncio.to_thread(resend.Emails.send, params)
-        logger.info(f"Email sent: {subject} -> {to_email}")
+        if REPLY_TO_EMAIL:
+            params["reply_to"] = normalize_email_address(REPLY_TO_EMAIL)
+
+        response = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Email sent: {subject} -> {recipient_email} ({response.get('id', 'no-id')})")
+    except EmailNotValidError as exc:
+        logger.error(f"Email validation failed for '{to_email}': {exc}")
+    except ValueError as exc:
+        logger.error(f"Email configuration error: {exc}")
     except Exception as e:
         logger.error(f"Email failed: {e}")

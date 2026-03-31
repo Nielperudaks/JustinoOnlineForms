@@ -164,9 +164,12 @@ export default function AdminPage() {
     const isApproverOnAnyTemplate = templates.some((t) =>
       (t.approver_chain || []).some((a) => a.user_id === uid),
     );
-    if (isApproverOnAnyTemplate) {
+    const isCustodianOnAnyTemplate = templates.some(
+      (t) => t.custodian?.user_id === uid,
+    );
+    if (isApproverOnAnyTemplate || isCustodianOnAnyTemplate) {
       toast.error(
-        "This user is currently assigned as an approver on one or more forms. Please reassign or remove them from all approver chains before deleting.",
+        "This user is currently assigned as an approver or custodian on one or more forms. Please reassign or remove them before deleting.",
       );
       return;
     }
@@ -242,6 +245,33 @@ export default function AdminPage() {
       fetchAll();
     } catch (err) {
       toast.error("Failed to remove approver");
+    }
+  };
+
+  const handleAssignCustodian = async (templateId, userId) => {
+    const custodian = approvers.find((a) => a.id === userId);
+    if (!custodian) return;
+    try {
+      await updateTemplate(templateId, {
+        custodian: {
+          user_id: userId,
+          user_name: custodian.name || "",
+        },
+      });
+      toast.success("Custodian assigned");
+      fetchAll();
+    } catch (err) {
+      toast.error("Failed to assign custodian");
+    }
+  };
+
+  const handleRemoveCustodian = async (templateId) => {
+    try {
+      await updateTemplate(templateId, { custodian: null });
+      toast.success("Custodian removed");
+      fetchAll();
+    } catch (err) {
+      toast.error("Failed to remove custodian");
     }
   };
 
@@ -760,7 +790,7 @@ export default function AdminPage() {
                     {filteredTemplates.length})
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Expand a form to assign up to 3 sequential approvers
+                    Expand a form to assign up to 3 sequential approvers and an optional custodian
                   </p>
                 </div>
                 <Button
@@ -791,6 +821,7 @@ export default function AdminPage() {
                       {deptTemplates.map((tmpl) => {
                         const isExpanded = expandedTemplate === tmpl.id;
                         const chain = tmpl.approver_chain || [];
+                        const custodian = tmpl.custodian;
                         return (
                           <div
                             key={tmpl.id}
@@ -814,6 +845,9 @@ export default function AdminPage() {
                                       {tmpl.fields?.length} fields ·{" "}
                                       {chain.length} approver
                                       {chain.length !== 1 ? "s" : ""}
+                                      {custodian?.user_name
+                                        ? ` · Custodian: ${custodian.user_name}`
+                                        : ""}
                                     </div>
                                   </div>
                                 </div>
@@ -936,6 +970,49 @@ export default function AdminPage() {
                                       </div>
                                     );
                                   })}
+                                  <div className="flex items-center gap-3 p-2 bg-white rounded-md border border-slate-100">
+                                    <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                                      C
+                                    </div>
+                                    <div className="flex-1">
+                                      <Select
+                                        value={custodian?.user_id || ""}
+                                        onValueChange={(v) =>
+                                          handleAssignCustodian(tmpl.id, v)
+                                        }
+                                      >
+                                        <SelectTrigger
+                                          data-testid={`custodian-${tmpl.id}`}
+                                          className="h-8 text-xs border-slate-200"
+                                        >
+                                          <SelectValue placeholder="Custodian (optional)" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {approvers
+                                            .filter((a) => a.role !== "requestor")
+                                            .map((a) => (
+                                              <SelectItem
+                                                key={a.id}
+                                                value={a.id}
+                                              >
+                                                {a.name} ({a.email})
+                                              </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    {custodian && (
+                                      <button
+                                        onClick={() =>
+                                          handleRemoveCustodian(tmpl.id)
+                                        }
+                                        className="p-1 hover:bg-red-50 rounded"
+                                        data-testid={`remove-custodian-${tmpl.id}`}
+                                      >
+                                        <X className="w-3.5 h-3.5 text-red-400" />
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             )}

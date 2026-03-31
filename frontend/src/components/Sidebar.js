@@ -15,7 +15,7 @@ const FILTER_ITEMS = [
   { key: "all", label: "All Requests", icon: LayoutDashboard },
   { key: "my_requests", label: "My Requests", icon: FileText },
   { key: "my_approvals", label: "Pending My Approval", icon: ClipboardCheck },
-  { key: "pending", label: "In Progress", icon: Clock },
+  { key: "pending", label: "Pending", icon: Clock },
   { key: "approved", label: "Approved", icon: CheckCircle2 },
   { key: "rejected", label: "Rejected", icon: XCircle },
   { key: "cancelled", label: "Cancelled", icon: XCircle },

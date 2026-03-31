@@ -37,6 +37,11 @@ const STATUS_CONFIG = {
     icon: Clock,
     cls: "bg-blue-50 text-blue-700 border-blue-200",
   },
+  pending: {
+    label: "Pending Fulfillment",
+    icon: Clock,
+    cls: "bg-amber-50 text-amber-700 border-amber-200",
+  },
   approved: {
     label: "Approved",
     icon: CheckCircle2,
@@ -55,7 +60,7 @@ const STATUS_CONFIG = {
 };
 
 function getRequestAgeIndicator(request) {
-  if (request.status !== "in_progress" || !request.created_at) {
+  if (!["in_progress", "pending"].includes(request.status) || !request.created_at) {
     return null;
   }
 
@@ -78,14 +83,15 @@ function getRequestAgeIndicator(request) {
   return null;
 }
 
-function ApprovalChain({ approvals }) {
+function ApprovalChain({ approvals, title = "Approval Chain" }) {
   if (!approvals?.length) return null;
   return (
     <div className="space-y-3" data-testid="approval-chain">
-      <h4 className="text-sm font-semibold text-slate-800">Approval Chain</h4>
+      <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
       <div className="flex items-center gap-1 flex-wrap">
         {approvals.map((a, i) => {
           const isApproved = a.status === "approved";
+          const isFulfilled = a.status === "fulfilled";
           const isRejected = a.status === "rejected";
           const isPending = a.status === "pending";
           const isCancelled = a.status === "cancelled";
@@ -96,7 +102,8 @@ function ApprovalChain({ approvals }) {
                 data-testid={`approval-step-${a.step}`}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
                   isApproved
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-70q  43q0"
+                    || isFulfilled
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                     : isRejected
                       ? "bg-red-50 border-red-200 text-red-700"
                       : isPending
@@ -109,6 +116,7 @@ function ApprovalChain({ approvals }) {
                 <div
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                     isApproved
+                      || isFulfilled
                       ? "bg-emerald-500 text-white"
                       : isRejected
                         ? "bg-red-500 text-white"
@@ -119,7 +127,7 @@ function ApprovalChain({ approvals }) {
                             : "bg-slate-300 text-white"
                   }`}
                 >
-                  {isApproved ? (
+                  {isApproved || isFulfilled ? (
                     <CheckCircle2 className="w-3.5 h-3.5" />
                   ) : isRejected ? (
                     <XCircle className="w-3.5 h-3.5" />
@@ -214,15 +222,23 @@ export default function RequestDetail({
       (a) => a.approver_id === currentUser?.id && a.status === "pending",
     );
 
+  const canConfirmFulfillment =
+    request.status === "pending" &&
+    request.custodian?.user_id === currentUser?.id &&
+    request.custodian?.status === "pending";
+
   const canCancel =
     request.status === "in_progress" &&
     currentUser?.id === request.requester_id;
 
   const handleAction = async (action) => {
     setActionLoading(true);
-    await onAction(request.id, action, comments);
-    setComments("");
-    setActionLoading(false);
+    try {
+      await onAction(request.id, action, comments);
+      setComments("");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleCancel = async () => {
@@ -457,7 +473,24 @@ export default function RequestDetail({
 
         {/* Approval Chain */}
         {request.status !== "cancelled" && (
-          <ApprovalChain approvals={request.approvals} />
+          <>
+            <ApprovalChain approvals={request.approvals} />
+            {request.custodian && (
+              <div className="mt-6">
+                <ApprovalChain
+                  title="Custodian"
+                  approvals={[
+                    {
+                      step: "C",
+                      approver_name: request.custodian.user_name || "Custodian",
+                      status: request.custodian.status,
+                      comments: request.custodian.comments,
+                    },
+                  ]}
+                />
+              </div>
+            )}
+          </>
         )}
 
         {/* Action buttons for current approver */}
@@ -498,6 +531,34 @@ export default function RequestDetail({
                 Reject
               </Button>
             </div>
+          </div>
+        )}
+
+        {canConfirmFulfillment && (
+          <div
+            className="mt-6 p-5 border border-amber-200 bg-amber-50/30 rounded-lg"
+            data-testid="custodian-actions"
+          >
+            <h4 className="text-sm font-semibold text-slate-800 mb-3">
+              Custodian Confirmation
+            </h4>
+            <Textarea
+              data-testid="custodian-comments"
+              placeholder="Add fulfillment notes (optional)..."
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              className="mb-3 bg-white text-sm"
+              rows={3}
+            />
+            <Button
+              data-testid="fulfilled-button"
+              onClick={() => handleAction("fulfill")}
+              disabled={actionLoading}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Fullfilled
+            </Button>
           </div>
         )}
 

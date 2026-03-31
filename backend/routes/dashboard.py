@@ -11,7 +11,7 @@ async def get_dashboard_stats(user=Depends(get_current_user)):
 
     if role == "super_admin":
         total = await db.requests.count_documents({})
-        pending = await db.requests.count_documents({"status": "in_progress"})
+        pending = await db.requests.count_documents({"status": {"$in": ["in_progress", "pending"]}})
         approved = await db.requests.count_documents({"status": "approved"})
         rejected = await db.requests.count_documents({"status": "rejected"})
         cancelled = await db.requests.count_documents({"status": "cancelled"})
@@ -25,7 +25,7 @@ async def get_dashboard_stats(user=Depends(get_current_user)):
             ]
         }
         total = await db.requests.count_documents(user_scope)
-        pending = await db.requests.count_documents({**user_scope, "status": "in_progress"})
+        pending = await db.requests.count_documents({**user_scope, "status": {"$in": ["in_progress", "pending"]}})
         approved = await db.requests.count_documents({**user_scope, "status": "approved"})
         rejected = await db.requests.count_documents({**user_scope, "status": "rejected"})
         cancelled = await db.requests.count_documents({**user_scope, "status": "cancelled"})
@@ -33,8 +33,17 @@ async def get_dashboard_stats(user=Depends(get_current_user)):
         total_templates = 0
 
     my_pending_approvals = await db.requests.count_documents({
-        "approvals": {"$elemMatch": {"approver_id": uid, "status": "pending"}},
-        "status": "in_progress"
+        "$or": [
+            {
+                "approvals": {"$elemMatch": {"approver_id": uid, "status": "pending"}},
+                "status": "in_progress"
+            },
+            {
+                "custodian.user_id": uid,
+                "custodian.status": "pending",
+                "status": "pending"
+            },
+        ]
     })
 
     unread_notifs = await db.notifications.count_documents({"user_id": uid, "is_read": False})

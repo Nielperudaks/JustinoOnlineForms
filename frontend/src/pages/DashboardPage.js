@@ -13,7 +13,6 @@ import {
   listNotifications,
   markNotificationRead,
   markAllNotificationsRead,
-  getRealtimeStatus,
   createRequest,
   actionRequest,
   getRequest,
@@ -38,7 +37,6 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({});
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [realtimeStatus, setRealtimeStatus] = useState(null);
 
   const [selectedDept, setSelectedDept] = useState(null);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -89,17 +87,15 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [deptRes, statsRes, notifRes, realtimeRes] = await Promise.all([
+      const [deptRes, statsRes, notifRes] = await Promise.all([
         listDepartments(),
         getDashboardStats(),
         listNotifications({ limit: 20 }),
-        getRealtimeStatus(),
       ]);
       setDepartments(deptRes.data);
       setStats(statsRes.data);
       setNotifications(notifRes.data.items);
       setUnreadCount(notifRes.data.unread_count);
-      setRealtimeStatus(realtimeRes.data);
     } catch (err) {
       console.error("Fetch error:", err);
     }
@@ -114,7 +110,7 @@ export default function DashboardPage() {
       if (isSuperAdmin && selectedDept) params.department_id = selectedDept;
       if (activeFilter === "my_requests") params.my_requests = true;
       if (activeFilter === "my_approvals") params.my_approvals = true;
-      if (activeFilter === "pending") params.status = "in_progress";
+      if (activeFilter === "pending") params.status = "pending";
       if (activeFilter === "approved") params.status = "approved";
       if (activeFilter === "rejected") params.status = "rejected";
       if (activeFilter === "cancelled") params.status = "cancelled";
@@ -250,12 +246,17 @@ export default function DashboardPage() {
   const handleAction = async (requestId, action, comments) => {
     try {
       const res = await actionRequest(requestId, { action, comments });
-      toast.success(`Request ${action}d successfully`);
+      const actionLabel =
+        action === "fulfill" ? "fulfilled" : `${action}d`;
+      toast.success(`Request ${actionLabel} successfully`);
       setSelectedRequest(res.data);
       fetchRequests();
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.detail || `Failed to ${action} request`);
+      toast.error(
+        err.response?.data?.detail ||
+          `Failed to ${action === "fulfill" ? "confirm fulfillment for" : action} request`,
+      );
     }
   };
 
@@ -376,29 +377,6 @@ export default function DashboardPage() {
             </h2>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-            {realtimeStatus && (
-              <div
-                className={`hidden sm:flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-                  realtimeStatus.mode === "redis"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-amber-200 bg-amber-50 text-amber-700"
-                }`}
-                title={
-                  realtimeStatus.mode === "redis"
-                    ? `Redis connected on ${realtimeStatus.redis_channel}`
-                    : (realtimeStatus.last_error || "Realtime is using local fallback mode")
-                }
-              >
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    realtimeStatus.mode === "redis" ? "bg-emerald-500" : "bg-amber-500"
-                  }`}
-                />
-                <span>
-                  {realtimeStatus.mode === "redis" ? "Redis live" : "Local fallback"}
-                </span>
-              </div>
-            )}
             {canCreateRequest && (
               <Button
                 data-testid="new-request-button"

@@ -6,13 +6,17 @@ import { formatDistanceToNow } from "date-fns";
 
 const TYPE_ICONS = {
   approval_required: Clock,
+  custodian_required: Clock,
   request_approved: CheckCircle2,
+  request_completed: CheckCircle2,
   request_rejected: XCircle,
 };
 
 const TYPE_COLORS = {
   approval_required: "text-blue-500 bg-blue-50",
+  custodian_required: "text-amber-500 bg-amber-50",
   request_approved: "text-emerald-500 bg-emerald-50",
+  request_completed: "text-emerald-500 bg-emerald-50",
   request_rejected: "text-red-500 bg-red-50",
 };
 
