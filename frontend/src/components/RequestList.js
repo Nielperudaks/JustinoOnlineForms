@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -45,22 +45,22 @@ export default function RequestList({
   const scrollAreaRef = useRef(null);
   const showInitialLoading = loading && requests.length === 0;
 
-  const loadMoreRequests = () => {
+  const loadMoreRequests = useCallback(() => {
     if (loading || loadingMore || !hasMore || !onLoadMore) {
       return;
     }
 
     onLoadMore();
-  };
+  }, [hasMore, loading, loadingMore, onLoadMore]);
 
-  const handleScroll = (event) => {
+  const handleScroll = useCallback((event) => {
     const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
     const reachedBottom = scrollHeight - scrollTop - clientHeight <= 24;
 
     if (reachedBottom) {
       loadMoreRequests();
     }
-  };
+  }, [loadMoreRequests]);
 
   useEffect(() => {
     const viewport = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
@@ -74,7 +74,7 @@ export default function RequestList({
     return () => {
       viewport.removeEventListener("scroll", handleScroll);
     };
-  }, [hasMore, loading, loadingMore, onLoadMore]);
+  }, [handleScroll]);
 
   return (
     <div className="h-full flex flex-col min-h-0 min-w-0" data-testid="request-list">
