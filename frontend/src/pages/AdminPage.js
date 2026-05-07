@@ -131,8 +131,35 @@ export default function AdminPage() {
   // });
 
   // User management
+  const findDepartmentManagerConflict = ({ role, department_id, userId }) => {
+    if (role !== "manager" || !department_id) {
+      return null;
+    }
+
+    return users.find(
+      (u) =>
+        u.role === "manager" &&
+        u.department_id === department_id &&
+        u.id !== userId,
+    );
+  };
+
   const handleSaveUser = async () => {
     try {
+      const existingDepartmentManager = findDepartmentManagerConflict({
+        role: userForm.role,
+        department_id: userForm.department_id,
+        userId: editingUser?.id,
+      });
+
+      if (existingDepartmentManager) {
+        const departmentName = getDeptName(userForm.department_id);
+        toast.error(
+          `The ${departmentName} department already has a manager. Please assign a different role or department.`,
+        );
+        return;
+      }
+
       if (editingUser) {
         const updates = {
           name: userForm.name,

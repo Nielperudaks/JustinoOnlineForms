@@ -11,6 +11,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Table,
   TableBody,
   TableCell,
@@ -18,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { X, FileText, ChevronRight, Upload, File } from "lucide-react";
+import { X, FileText, ChevronRight, ChevronDown, Upload, File } from "lucide-react";
 
 const DROPZONE_MAX_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_EXTENSIONS = /\.(png|jpg|jpeg|gif|webp|pdf|xls|xlsx|doc|docx)$/i;
@@ -106,6 +112,51 @@ function DropzoneInput({ value, onFile, fieldName, required, accept, maxSize, al
   );
 }
 
+function MultiSelectInput({ field, value, onChange }) {
+  const selected = Array.isArray(value) ? value : [];
+
+  const toggleOption = (option, checked) => {
+    if (checked) {
+      onChange(selected.includes(option) ? selected : [...selected, option]);
+      return;
+    }
+
+    onChange(selected.filter((item) => item !== option));
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-between text-sm font-normal"
+          data-testid={`field-${field.name}`}
+        >
+          <span className="truncate">
+            {selected.length
+              ? selected.join(", ")
+              : `Select ${field.label.toLowerCase()}`}
+          </span>
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
+        {(field.options || []).map((opt) => (
+          <DropdownMenuCheckboxItem
+            key={opt}
+            checked={selected.includes(opt)}
+            onCheckedChange={(checked) => toggleOption(opt, checked)}
+            onSelect={(event) => event.preventDefault()}
+          >
+            {opt}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export default function CreateRequestDialog({
   templates,
   departments,
@@ -157,6 +208,8 @@ export default function CreateRequestDialog({
         };
       } else if (f.type === "dropzone") {
         initial[f.name] = null;
+      } else if (f.type === "select" && f.is_multiselect) {
+        initial[f.name] = [];
       } else {
         initial[f.name] = "";
       }
@@ -177,6 +230,8 @@ export default function CreateRequestDialog({
         if (!hasContent) return false;
       } else if (f.type === "dropzone") {
         if (val == null) return false;
+      } else if (f.type === "select" && f.is_multiselect) {
+        if (!Array.isArray(val) || val.length === 0) return false;
       } else if (val == null || String(val || "").trim() === "") {
         return false;
       }
@@ -338,6 +393,16 @@ export default function CreateRequestDialog({
           />
         );
       case "select":
+        if (field.is_multiselect) {
+          return (
+            <MultiSelectInput
+              field={field}
+              value={formData[field.name]}
+              onChange={onChange}
+            />
+          );
+        }
+
         return (
           <Select value={val} onValueChange={onChange}>
             <SelectTrigger

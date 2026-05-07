@@ -47,6 +47,7 @@ function createField(overrides = {}) {
     type: "text",
     required: true,
     options: null,
+    is_multiselect: false,
     table_title: "",
     column_headers: null,
     num_rows: 3,
@@ -100,6 +101,7 @@ export default function BuildFormDialog({
                 type: f.type || "text",
                 required: f.required !== false,
                 options: f.options && f.options.length ? f.options : null,
+                is_multiselect: f.is_multiselect === true,
                 table_title: f.table_title || "",
                 column_headers:
                   f.column_headers && f.column_headers.length ? f.column_headers : null,
@@ -123,6 +125,7 @@ export default function BuildFormDialog({
         type: "text",
         required: true,
         options: null,
+        is_multiselect: false,
         table_title: "",
         column_headers: null,
         num_rows: 3,
@@ -171,6 +174,7 @@ export default function BuildFormDialog({
               ? f.options
               : [];
         out.options = opts.length ? opts : ["Option 1", "Option 2"];
+        out.is_multiselect = f.is_multiselect === true;
       }
       if (f.type === "table") {
         out.table_title = (f.table_title || "").trim();
@@ -390,6 +394,17 @@ export default function BuildFormDialog({
                           className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                           rows={3}
                         />
+                        <label className="flex items-center gap-1.5 pt-1 text-xs text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={field.is_multiselect === true}
+                            onChange={(e) =>
+                              updateField(index, "is_multiselect", e.target.checked)
+                            }
+                            className="rounded border-slate-300"
+                          />
+                          Enable multi selection
+                        </label>
                       </div>
                     )}
                     {field.type === "table" && (

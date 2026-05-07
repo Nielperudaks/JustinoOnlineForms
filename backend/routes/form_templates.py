@@ -14,6 +14,7 @@ class FormField(BaseModel):
     type: str  # text, textarea, number, date, select, table, dropzone
     required: bool = True
     options: Optional[List[str]] = None
+    is_multiselect: bool = False
     placeholder: Optional[str] = ""
     # Table field config
     table_title: Optional[str] = None

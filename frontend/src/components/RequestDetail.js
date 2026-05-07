@@ -83,6 +83,14 @@ function getRequestAgeIndicator(request) {
   return null;
 }
 
+function formatRequestValue(value) {
+  if (Array.isArray(value)) {
+    return value.length ? value.join(", ") : "-";
+  }
+
+  return String(value ?? "") || "-";
+}
+
 function ApprovalChain({ approvals, title = "Approval Chain" }) {
   if (!approvals?.length) return null;
   return (
@@ -351,7 +359,7 @@ export default function RequestDetail({
                 value &&
                 typeof value === "object" &&
                 "headers" in value &&
-                "rows" in value
+                "rows" in value 
               ) {
                 return (
                   <div key={key} className="w-full px-2">
@@ -450,7 +458,7 @@ export default function RequestDetail({
                       {label}
                     </div>
                     <div className="text-sm text-slate-700">
-                      {String(value ?? "") || "-"}
+                      {formatRequestValue(value)}
                     </div>
                   </div>
                 </div>
