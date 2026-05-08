@@ -77,8 +77,10 @@ export default function BuildFormDialog({
   onClose,
   onSubmit,
   initialTemplate = null,
+  lockedDepartmentId = null,
 }) {
   const isEdit = !!initialTemplate;
+  const isDepartmentLocked = isEdit || !!lockedDepartmentId;
 
   const [department_id, setDepartment_id] = useState("");
   const [name, setName] = useState("");
@@ -110,10 +112,12 @@ export default function BuildFormDialog({
             )
           : [createField()],
       );
+    } else if (lockedDepartmentId) {
+      setDepartment_id(lockedDepartmentId);
     } else if (departments.length && !department_id) {
       setDepartment_id(departments[0].id);
     }
-  }, [initialTemplate, departments, department_id]);
+  }, [initialTemplate, departments, department_id, lockedDepartmentId]);
 
   const addField = () => {
     const idx = fields.length + 1;
@@ -191,7 +195,7 @@ export default function BuildFormDialog({
     });
 
     return {
-      department_id: department_id || (departments[0]?.id ?? ""),
+      department_id: lockedDepartmentId || department_id || (departments[0]?.id ?? ""),
       name: name.trim(),
       description: (description || "").trim(),
       fields: fieldPayload,
@@ -241,7 +245,7 @@ export default function BuildFormDialog({
               <Select
                 value={department_id}
                 onValueChange={setDepartment_id}
-                disabled={isEdit}
+                disabled={isDepartmentLocked}
               >
                 <SelectTrigger data-testid="build-form-department" className="text-sm">
                   <SelectValue placeholder="Select department" />

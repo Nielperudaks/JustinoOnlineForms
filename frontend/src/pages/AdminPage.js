@@ -8,6 +8,7 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  listDepartments,
   listAllDepartments,
   createDepartment,
   updateDepartment,
@@ -17,6 +18,7 @@ import {
   createTemplate,
   deleteTemplate,
   listApprovers,
+  listCustodians,
   getDashboardStats,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -60,8 +62,12 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [approvers, setApprovers] = useState([]);
+  const [custodians, setCustodians] = useState([]);
   const [stats, setStats] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
+  const isSuperAdmin = user?.role === "super_admin";
+  const isManager = user?.role === "manager";
+  const canManageSettings = isSuperAdmin || isManager;
 
   // User form state
   const [showUserForm, setShowUserForm] = useState(false);
@@ -96,31 +102,46 @@ export default function AdminPage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [deptRes, usersRes, tmplRes, approversRes, statsRes] =
+      const departmentParams = isManager && user?.department_id
+        ? { department_id: user.department_id }
+        : {};
+      const [deptRes, usersRes, tmplRes, approversRes, custodiansRes, statsRes] =
         await Promise.all([
-          listAllDepartments(),
-          listUsers({}),
+          isSuperAdmin ? listAllDepartments() : listDepartments(),
+          listUsers(departmentParams),
           listAllTemplates(),
-          listApprovers({}),
+          listApprovers(departmentParams),
+          listCustodians(departmentParams),
           getDashboardStats(),
         ]);
-      setDepartments(deptRes.data);
+      const visibleDepartments = isManager
+        ? deptRes.data.filter((dept) => dept.id === user?.department_id)
+        : deptRes.data;
+      setDepartments(visibleDepartments);
       setUsers(usersRes.data);
       setTemplates(tmplRes.data);
       setApprovers(approversRes.data);
-      setStats(statsRes.data);
+      setCustodians(custodiansRes.data);
+      setStats({
+        ...statsRes.data,
+        total_users: usersRes.data.length,
+        total_templates: tmplRes.data.length,
+      });
     } catch (err) {
       console.error(err);
     }
-  }, []);
+  }, [isManager, isSuperAdmin, user?.department_id]);
 
   useEffect(() => {
-    if (user?.role !== "super_admin") {
+    if (!canManageSettings) {
       navigate("/");
       return;
     }
+    if (isManager) {
+      setActiveTab("forms");
+    }
     fetchAll();
-  }, [user, navigate, fetchAll]);
+  }, [canManageSettings, isManager, navigate, fetchAll]);
 
   // Reactive updates: poll and refetch when user returns to tab so stats
   // and lists update when other admins or users make changes.
@@ -276,7 +297,7 @@ export default function AdminPage() {
   };
 
   const handleAssignCustodian = async (templateId, userId) => {
-    const custodian = approvers.find((a) => a.id === userId);
+    const custodian = custodians.find((a) => a.id === userId);
     if (!custodian) return;
     try {
       await updateTemplate(templateId, {
@@ -304,15 +325,18 @@ export default function AdminPage() {
 
   const handleBuildFormSubmit = async (payload, templateId) => {
     try {
+      const scopedPayload = isManager
+        ? { ...payload, department_id: user.department_id }
+        : payload;
       if (templateId) {
         await updateTemplate(templateId, {
-          name: payload.name,
-          description: payload.description,
-          fields: payload.fields,
+          name: scopedPayload.name,
+          description: scopedPayload.description,
+          fields: scopedPayload.fields,
         });
         toast.success("Form updated");
       } else {
-        await createTemplate(payload);
+        await createTemplate(scopedPayload);
         toast.success("Form created");
       }
       setShowBuildFormDialog(false);
@@ -481,8 +505,13 @@ export default function AdminPage() {
 
   const filteredTemplates = templates.filter(
     (t) =>
-      !searchQuery || t.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      (!isManager || t.department_id === user?.department_id) &&
+      (!searchQuery || t.name.toLowerCase().includes(searchQuery.toLowerCase())),
   );
+
+  const visibleDepartments = isManager
+    ? departments.filter((dept) => dept.id === user?.department_id)
+    : departments;
 
   const ROLE_COLORS = {
     super_admin: "bg-purple-50 text-purple-700 border-purple-200",
@@ -506,10 +535,12 @@ export default function AdminPage() {
           </button>
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              Admin Panel
+              {isManager ? "Manager Settings" : "Admin Panel"}
             </h1>
             <p className="text-xs text-slate-500">
-              Manage users, forms, and approvers
+              {isManager
+                ? "Manage forms and assignments for your department"
+                : "Manage users, forms, and approvers"}
             </p>
           </div>
         </div>
@@ -550,13 +581,15 @@ export default function AdminPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="bg-white border border-slate-200 mb-6">
-            <TabsTrigger
-              value="users"
-              className="gap-2 text-sm"
-              data-testid="tab-users"
-            >
-              <Users className="w-4 h-4" /> Users
-            </TabsTrigger>
+            {isSuperAdmin && (
+              <TabsTrigger
+                value="users"
+                className="gap-2 text-sm"
+                data-testid="tab-users"
+              >
+                <Users className="w-4 h-4" /> Users
+              </TabsTrigger>
+            )}
             <TabsTrigger
               value="forms"
               className="gap-2 text-sm"
@@ -564,16 +597,19 @@ export default function AdminPage() {
             >
               <FileText className="w-4 h-4" /> Form Templates & Approvers
             </TabsTrigger>
-            <TabsTrigger
-              value="departments"
-              className="gap-2 text-sm"
-              data-testid="tab-departments"
-            >
-              <Building className="w-4 h-4" /> Departments
-            </TabsTrigger>
+            {isSuperAdmin && (
+              <TabsTrigger
+                value="departments"
+                className="gap-2 text-sm"
+                data-testid="tab-departments"
+              >
+                <Building className="w-4 h-4" /> Departments
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* USERS TAB */}
+          {isSuperAdmin && (
           <TabsContent value="users">
          
               <div className="bg-white rounded-lg border border-slate-200">
@@ -806,6 +842,7 @@ export default function AdminPage() {
               </div>
             
           </TabsContent>
+          )}
 
           {/* FORMS & APPROVERS TAB */}
           <TabsContent value="forms">
@@ -832,7 +869,7 @@ export default function AdminPage() {
                 </Button>
                 </div>
               <div className="flex-1 overflow-y-auto max-h-[32rem]">
-                {departments.map((dept) => {
+                {visibleDepartments.map((dept) => {
                   const deptTemplates = filteredTemplates.filter(
                     (t) => t.department_id === dept.id,
                   );
@@ -1015,8 +1052,7 @@ export default function AdminPage() {
                                           <SelectValue placeholder="Custodian (optional)" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {approvers
-                                            .filter((a) => a.role !== "requestor")
+                                          {custodians
                                             .map((a) => (
                                               <SelectItem
                                                 key={a.id}
@@ -1054,6 +1090,7 @@ export default function AdminPage() {
           </TabsContent>
 
           {/* DEPARTMENTS TAB */}
+          {isSuperAdmin && (
           <TabsContent value="departments">
             <div className="bg-white rounded-lg border border-slate-200">
               <div className="p-4 border-b border-slate-100 flex items-start justify-between gap-6 flex-wrap">
@@ -1270,18 +1307,20 @@ export default function AdminPage() {
               </div>
             </div>
           </TabsContent>
+          )}
         </Tabs>
       </div>
 
       {showBuildFormDialog && (
         <BuildFormDialog
-          departments={departments}
+          departments={visibleDepartments}
           onClose={() => {
             setShowBuildFormDialog(false);
             setEditingTemplate(null);
           }}
           onSubmit={handleBuildFormSubmit}
           initialTemplate={editingTemplate}
+          lockedDepartmentId={isManager ? user?.department_id : null}
         />
       )}
     </div>

@@ -34,6 +34,7 @@ export const createUser = (data) => api.post('/users', data);
 export const updateUser = (id, data) => api.put(`/users/${id}`, data);
 export const deleteUser = (id) => api.delete(`/users/${id}`);
 export const listApprovers = (params) => api.get('/users/approvers', { params });
+export const listCustodians = (params) => api.get('/users/custodians', { params });
 export const changePassword = (id, data) => api.put(`/users/${id}/password`, data);
 
 // Departments
@@ -45,7 +46,7 @@ export const deleteDepartment = (id) => api.delete(`/departments/${id}`);
 
 // Form Templates
 export const listTemplates = (params) => api.get('/form-templates', { params });
-export const listAllTemplates = () => api.get('/form-templates/all');
+export const listAllTemplates = (params) => api.get('/form-templates/all', { params });
 export const getTemplate = (id) => api.get(`/form-templates/${id}`);
 export const createTemplate = (data) => api.post('/form-templates', data);
 export const updateTemplate = (id, data) => api.put(`/form-templates/${id}`, data);

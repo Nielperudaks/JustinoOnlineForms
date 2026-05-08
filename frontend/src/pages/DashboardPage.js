@@ -453,12 +453,12 @@ export default function DashboardPage() {
                 />
               )}
             </div>
-            {user?.role === "super_admin" && (
+            {(user?.role === "super_admin" || user?.role === "manager") && (
               <button
                 data-testid="admin-button"
                 onClick={() => navigate("/admin")}
                 className="p-2 hover:bg-slate-100 rounded-md transition-colors"
-                title="Admin Panel"
+                title={user?.role === "manager" ? "Manager Settings" : "Admin Panel"}
               >
                 <Settings className="w-4.5 h-4.5 text-slate-500" />
               </button>

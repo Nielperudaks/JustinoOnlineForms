@@ -1,11 +1,77 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
-from utils.helpers import db, require_admin, get_current_user
+from utils.helpers import db, require_form_manager, get_current_user
 import uuid
 from datetime import datetime, timezone
 
 templates_router = APIRouter(prefix="/form-templates", tags=["form-templates"])
+
+APPROVER_ROLES = {"approver", "both", "manager", "super_admin"}
+
+
+def is_super_admin(user):
+    return user.get("role") == "super_admin"
+
+
+def manager_department_id(user):
+    return user.get("department_id") or ""
+
+
+def ensure_manager_can_access_department(user, department_id):
+    if is_super_admin(user):
+        return
+    if user.get("role") != "manager" or manager_department_id(user) != department_id:
+        raise HTTPException(status_code=403, detail="Managers can only manage forms in their department")
+
+
+async def ensure_manager_can_access_template(user, template_id):
+    tmpl = await db.form_templates.find_one({"id": template_id}, {"_id": 0})
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    ensure_manager_can_access_department(user, tmpl.get("department_id"))
+    return tmpl
+
+
+async def validate_manager_assignments(user, approver_chain=None, custodian=None):
+    if is_super_admin(user):
+        return
+
+    dept_id = manager_department_id(user)
+    for approver in approver_chain or []:
+        approver_id = approver.user_id if hasattr(approver, "user_id") else approver.get("user_id")
+        if approver_id == "immediate_manager":
+            continue
+        approver_user = await db.users.find_one(
+            {
+                "id": approver_id,
+                "department_id": dept_id,
+                "is_active": True,
+                "role": {"$in": list(APPROVER_ROLES)},
+            },
+            {"_id": 0},
+        )
+        if not approver_user:
+            raise HTTPException(
+                status_code=400,
+                detail="Managers can only assign active approvers from their department",
+            )
+
+    if custodian:
+        custodian_id = custodian.user_id if hasattr(custodian, "user_id") else custodian.get("user_id")
+        custodian_user = await db.users.find_one(
+            {
+                "id": custodian_id,
+                "department_id": dept_id,
+                "is_active": True,
+            },
+            {"_id": 0},
+        )
+        if not custodian_user:
+            raise HTTPException(
+                status_code=400,
+                detail="Managers can only assign active custodians from their department",
+            )
 
 
 class FormField(BaseModel):
@@ -64,8 +130,11 @@ async def list_templates(
 
 
 @templates_router.get("/all")
-async def list_all_templates(admin=Depends(require_admin)):
-    templates = await db.form_templates.find({}, {"_id": 0}).to_list(500)
+async def list_all_templates(current=Depends(require_form_manager)):
+    query = {}
+    if not is_super_admin(current):
+        query["department_id"] = manager_department_id(current)
+    templates = await db.form_templates.find(query, {"_id": 0}).to_list(500)
     return templates
 
 
@@ -78,7 +147,9 @@ async def get_template(template_id: str, user=Depends(get_current_user)):
 
 
 @templates_router.post("", status_code=201)
-async def create_template(req: TemplateCreate, admin=Depends(require_admin)):
+async def create_template(req: TemplateCreate, current=Depends(require_form_manager)):
+    ensure_manager_can_access_department(current, req.department_id)
+    await validate_manager_assignments(current, req.approver_chain, req.custodian)
     dept = await db.departments.find_one({"id": req.department_id}, {"_id": 0})
     if not dept:
         raise HTTPException(status_code=400, detail="Department not found")
@@ -98,9 +169,16 @@ async def create_template(req: TemplateCreate, admin=Depends(require_admin)):
 
 
 @templates_router.put("/{template_id}")
-async def update_template(template_id: str, req: TemplateUpdate, admin=Depends(require_admin)):
-    updates = {}
+async def update_template(template_id: str, req: TemplateUpdate, current=Depends(require_form_manager)):
+    await ensure_manager_can_access_template(current, template_id)
     data = req.model_dump(exclude_unset=True)
+    if "approver_chain" in data or "custodian" in data:
+        await validate_manager_assignments(
+            current,
+            req.approver_chain if "approver_chain" in data else None,
+            req.custodian if "custodian" in data else None,
+        )
+    updates = {}
     for k, v in data.items():
         if k == "fields":
             updates[k] = [f if isinstance(f, dict) else f.model_dump() for f in v]
@@ -121,13 +199,15 @@ async def update_template(template_id: str, req: TemplateUpdate, admin=Depends(r
 
 
 @templates_router.delete("/{template_id}")
-async def delete_template(template_id: str, admin=Depends(require_admin)):
+async def delete_template(template_id: str, current=Depends(require_form_manager)):
     """
     Permanently delete a form template.
 
     A template can only be deleted if there are no pending/active requests
     that still reference it. This keeps approval flows and history consistent.
     """
+    await ensure_manager_can_access_template(current, template_id)
+
     # Block deletion if there are pending/active requests using this template
     active_count = await db.requests.count_documents(
         {

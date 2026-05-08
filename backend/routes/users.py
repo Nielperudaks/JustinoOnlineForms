@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
-from utils.helpers import db, hash_password, require_admin, get_current_user
+from utils.helpers import db, hash_password, require_admin, require_form_manager, get_current_user
 import uuid
 from datetime import datetime, timezone
 
@@ -34,10 +34,12 @@ async def list_users(
     department_id: Optional[str] = None,
     role: Optional[str] = None,
     search: Optional[str] = None,
-    admin=Depends(require_admin)
+    current=Depends(require_form_manager)
 ):
     query = {}
-    if department_id:
+    if current.get("role") == "manager":
+        query["department_id"] = current.get("department_id")
+    elif department_id:
         query["department_id"] = department_id
     if role:
         query["role"] = role
@@ -95,10 +97,23 @@ async def delete_user(user_id: str, admin=Depends(require_admin)):
 @users_router.get("/approvers")
 async def list_approvers(department_id: Optional[str] = None, user=Depends(get_current_user)):
     query = {"role": {"$in": ["approver", "both", "manager", "super_admin"]}}
-    if department_id:
+    if user.get("role") == "manager":
+        query["department_id"] = user.get("department_id")
+    elif department_id:
         query["department_id"] = department_id
     approvers = await db.users.find(query, {"_id": 0, "password_hash": 0}).to_list(500)
     return approvers
+
+
+@users_router.get("/custodians")
+async def list_custodians(department_id: Optional[str] = None, user=Depends(get_current_user)):
+    query = {"is_active": True}
+    if user.get("role") == "manager":
+        query["department_id"] = user.get("department_id")
+    elif department_id:
+        query["department_id"] = department_id
+    custodians = await db.users.find(query, {"_id": 0, "password_hash": 0}).to_list(500)
+    return custodians
 
 
 @users_router.put("/{user_id}/password")

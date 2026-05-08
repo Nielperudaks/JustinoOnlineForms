@@ -94,6 +94,12 @@ async def require_admin(user=Depends(get_current_user)):
     return user
 
 
+async def require_form_manager(user=Depends(get_current_user)):
+    if user["role"] not in ("super_admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin or manager access required")
+    return user
+
+
 def normalize_email_address(email_value: str) -> str:
     normalized = validate_email(email_value, check_deliverability=False)
     return normalized.normalized
