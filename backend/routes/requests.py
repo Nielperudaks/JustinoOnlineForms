@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
-from utils.helpers import db, get_current_user, send_email_notification
+from utils.helpers import db, get_current_user, render_request_email, send_email_notification
 import uuid
 from datetime import datetime, timezone
 from realtime import manager
@@ -245,7 +245,16 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
             await send_email_notification(
                 first_approver.get("email", ""),
                 f"Approval Required: {request_number} - {display_title}",
-                f"<h3>New Request Pending Your Approval</h3><p><b>{request_number}</b> - {display_title}</p><p>From: {user['name']}</p><p>Please log in to review and approve.</p>"
+                render_request_email(
+                    heading="New Request Pending Your Approval",
+                    request_id=result["id"],
+                    request_number=request_number,
+                    request_title=display_title,
+                    intro="A new request is waiting for your review.",
+                    requester_name=user["name"],
+                    status_label=f"Step 1 of {total_steps}",
+                    action_label="Review request",
+                ),
             )
             await manager.broadcast(
                 event="NOTIFICATION_CREATED",
@@ -271,7 +280,16 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
         await send_email_notification(
             custodian_user.get("email", "") if custodian_user else "",
             f"Fulfillment Required: {request_number} - {display_title}",
-            f"<h3>Request Ready for Fulfillment</h3><p><b>{request_number}</b> - {display_title}</p><p>Requested by: {user['name']}</p><p>Please fulfill the request and confirm once it is completed.</p>"
+            render_request_email(
+                heading="Request Ready for Fulfillment",
+                request_id=result["id"],
+                request_number=request_number,
+                request_title=display_title,
+                intro="This request is ready for fulfillment confirmation.",
+                requester_name=user["name"],
+                status_label="Awaiting custodian confirmation",
+                action_label="Review request",
+            ),
         )
         await manager.broadcast(
             event="NOTIFICATION_CREATED",
@@ -407,7 +425,18 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
             await send_email_notification(
                 approver_user.get("email", ""),
                 f"Request Completed: {req['request_number']}",
-                f"<h3>Request Completed</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>Confirmed by custodian: {user['name']}</p><p>Comments: {action.comments or 'None'}</p>"
+                render_request_email(
+                    heading="Request Completed",
+                    request_id=request_id,
+                    request_number=req["request_number"],
+                    request_title=request_display_name,
+                    intro="A request you approved has been fulfilled and confirmed.",
+                    requester_name=req.get("requester_name", ""),
+                    actor_name=user["name"],
+                    status_label="Completed",
+                    comments=action.comments or "None",
+                    action_label="View request",
+                ),
             )
             await manager.broadcast(
                 event="NOTIFICATION_CREATED",
@@ -432,7 +461,17 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
         await send_email_notification(
             req.get("requester_email", ""),
             f"Request Approved: {req['request_number']}",
-            f"<h3>Request Fulfilled</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>Confirmed by custodian: {user['name']}</p><p>Your request is now complete.</p>"
+            render_request_email(
+                heading="Request Fulfilled",
+                request_id=request_id,
+                request_number=req["request_number"],
+                request_title=request_display_name,
+                intro="Your request has been fulfilled and is now complete.",
+                requester_name=req.get("requester_name", ""),
+                actor_name=user["name"],
+                status_label="Completed",
+                action_label="View request",
+            ),
         )
         await manager.broadcast(
             event="NOTIFICATION_CREATED",
@@ -502,7 +541,18 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
         await send_email_notification(
             req.get("requester_email", ""),
             f"Request Rejected: {req['request_number']}",
-            f"<h3>Request Rejected</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>Rejected by: {user['name']}</p><p>Comments: {action.comments or 'None'}</p>"
+            render_request_email(
+                heading="Request Rejected",
+                request_id=request_id,
+                request_number=req["request_number"],
+                request_title=request_display_name,
+                intro="Your request was rejected during approval review.",
+                requester_name=req.get("requester_name", ""),
+                actor_name=user["name"],
+                status_label=f"Rejected at step {current_step}",
+                comments=action.comments or "None",
+                action_label="View request",
+            ),
         )
         await manager.broadcast(
             event="NOTIFICATION_CREATED",
@@ -560,7 +610,16 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                     await send_email_notification(
                         next_approver.get("email", ""),
                         f"Approval Required (Step {next_step}): {req['request_number']}",
-                        f"<h3>Approval Required</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>Step {next_step} of {req['total_approval_steps']}</p>"
+                        render_request_email(
+                            heading="Approval Required",
+                            request_id=request_id,
+                            request_number=req["request_number"],
+                            request_title=request_display_name,
+                            intro="This request has moved to your approval step.",
+                            requester_name=req.get("requester_name", ""),
+                            status_label=f"Step {next_step} of {req['total_approval_steps']}",
+                            action_label="Review request",
+                        ),
                     )
                     await manager.broadcast(
                         event="NOTIFICATION_CREATED",
@@ -607,7 +666,16 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                     await send_email_notification(
                         custodian_user.get("email", ""),
                         f"Fulfillment Required: {req['request_number']}",
-                        f"<h3>Request Ready for Fulfillment</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>All approvers have approved this request.</p><p>Please fulfill it and confirm completion.</p>"
+                        render_request_email(
+                            heading="Request Ready for Fulfillment",
+                            request_id=request_id,
+                            request_number=req["request_number"],
+                            request_title=request_display_name,
+                            intro="All approval steps are complete. Please fulfill the request and confirm completion.",
+                            requester_name=req.get("requester_name", ""),
+                            status_label="Awaiting custodian confirmation",
+                            action_label="Review request",
+                        ),
                     )
                     await manager.broadcast(
                         event="NOTIFICATION_CREATED",
@@ -637,7 +705,16 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                 await send_email_notification(
                     req.get("requester_email", ""),
                     f"Request Approved: {req['request_number']}",
-                    f"<h3>Request Approved</h3><p><b>{req['request_number']}</b> - {request_display_name}</p><p>All approvers have signed off.</p>"
+                    render_request_email(
+                        heading="Request Approved",
+                        request_id=request_id,
+                        request_number=req["request_number"],
+                        request_title=request_display_name,
+                        intro="All approvers have signed off on your request.",
+                        requester_name=req.get("requester_name", ""),
+                        status_label="Approved",
+                        action_label="View request",
+                    ),
                 )
                 await manager.broadcast(
                     event="NOTIFICATION_CREATED",

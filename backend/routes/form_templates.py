@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 templates_router = APIRouter(prefix="/form-templates", tags=["form-templates"])
 
 APPROVER_ROLES = {"approver", "both", "manager", "super_admin"}
+MAX_APPROVER_STEPS = 8
 
 
 def is_super_admin(user):
@@ -23,6 +24,14 @@ def ensure_manager_can_access_department(user, department_id):
         return
     if user.get("role") != "manager" or manager_department_id(user) != department_id:
         raise HTTPException(status_code=403, detail="Managers can only manage forms in their department")
+
+
+def validate_approver_chain_limit(approver_chain=None):
+    if len(approver_chain or []) > MAX_APPROVER_STEPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Forms can have a maximum of {MAX_APPROVER_STEPS} approvers",
+        )
 
 
 async def ensure_manager_can_access_template(user, template_id):
@@ -149,6 +158,7 @@ async def get_template(template_id: str, user=Depends(get_current_user)):
 @templates_router.post("", status_code=201)
 async def create_template(req: TemplateCreate, current=Depends(require_form_manager)):
     ensure_manager_can_access_department(current, req.department_id)
+    validate_approver_chain_limit(req.approver_chain)
     await validate_manager_assignments(current, req.approver_chain, req.custodian)
     dept = await db.departments.find_one({"id": req.department_id}, {"_id": 0})
     if not dept:
@@ -172,6 +182,8 @@ async def create_template(req: TemplateCreate, current=Depends(require_form_mana
 async def update_template(template_id: str, req: TemplateUpdate, current=Depends(require_form_manager)):
     await ensure_manager_can_access_template(current, template_id)
     data = req.model_dump(exclude_unset=True)
+    if "approver_chain" in data:
+        validate_approver_chain_limit(req.approver_chain)
     if "approver_chain" in data or "custodian" in data:
         await validate_manager_assignments(
             current,

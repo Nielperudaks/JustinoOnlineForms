@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
 import { useLiveUpdates } from "@/hooks/useLiveUpdates";
@@ -32,6 +32,7 @@ const REQUESTS_LOAD_MORE_SIZE = 5;
 export default function DashboardPage() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [departments, setDepartments] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -47,6 +48,7 @@ export default function DashboardPage() {
   const canCreateRequest = user?.role === "requestor" || user?.role === "both" || user?.role === "manager" || user?.role === "super_admin";
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const linkedRequestId = searchParams.get("request");
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -309,6 +311,18 @@ export default function DashboardPage() {
       setSelectedRequest(req);
     }
   };
+
+  useEffect(() => {
+    if (!linkedRequestId) return;
+
+    getRequest(linkedRequestId)
+      .then((res) => setSelectedRequest(res.data))
+      .catch((err) => {
+        toast.error(
+          err.response?.data?.detail || "Unable to open the linked request",
+        );
+      });
+  }, [linkedRequestId]);
 
   const handleMarkRead = async (id) => {
     await markNotificationRead(id);

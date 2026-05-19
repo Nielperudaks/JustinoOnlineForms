@@ -188,6 +188,35 @@ def test_manager_can_assign_department_approval_capable_approver(fake_db):
     assert [step["user_id"] for step in created["approver_chain"]] == ["approver-a", "both-a", "immediate_manager"]
 
 
+def test_template_accepts_eight_approval_steps(fake_db):
+    req = make_template_create(
+        approver_chain=[
+            form_templates.ApproverStep(step=step, user_id="immediate_manager", user_name="Immediate Manager")
+            for step in range(1, 9)
+        ]
+    )
+
+    created = run(form_templates.create_template(req, current=manager()))
+
+    assert len(created["approver_chain"]) == 8
+    assert created["approver_chain"][-1]["step"] == 8
+
+
+def test_template_rejects_more_than_eight_approval_steps(fake_db):
+    req = make_template_create(
+        approver_chain=[
+            form_templates.ApproverStep(step=step, user_id="immediate_manager", user_name="Immediate Manager")
+            for step in range(1, 10)
+        ]
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        run(form_templates.create_template(req, current=manager()))
+
+    assert exc.value.status_code == 400
+    assert "8 approvers" in exc.value.detail
+
+
 def test_manager_cannot_assign_requestor_as_approver(fake_db):
     req = make_template_create(
         approver_chain=[

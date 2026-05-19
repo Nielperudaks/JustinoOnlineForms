@@ -21,6 +21,7 @@ Backend environment variables:
 | `JWT_SECRET`    | Secret for JWT signing               |
 | `RESEND_API_KEY`| Optional: Resend API key for email  |
 | `SENDER_EMAIL`  | Optional: Sender email for Resend   |
+| `FRONTEND_URL`  | Public frontend URL used in request-review email links |
 
 After deployment, note the **backend base URL** (e.g. `https://your-api.onrender.com`). Do **not** include `/api` — the frontend adds that.
 

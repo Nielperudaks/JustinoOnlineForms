@@ -32,6 +32,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -48,11 +61,104 @@ import {
   Shield,
   X,
   Save,
+  Check,
   ChevronDown,
   ChevronUp,
   Search,
   Wrench,
 } from "lucide-react";
+
+const MAX_APPROVER_STEPS = 8;
+const APPROVER_STEPS = Array.from(
+  { length: MAX_APPROVER_STEPS },
+  (_, index) => index + 1,
+);
+
+function ApproverPicker({ assigned, approvers, onSelect, testId, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const selectedApprover = approvers.find((a) => a.id === assigned?.user_id);
+  const selectedLabel =
+    assigned?.user_id === "immediate_manager"
+      ? "Immediate Manager"
+      : selectedApprover
+        ? `${selectedApprover.name} (${selectedApprover.email})`
+        : assigned?.user_name || "";
+
+  const handleSelect = (userId) => {
+    onSelect(userId);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-testid={testId}
+          className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-left text-xs text-slate-700 hover:border-blue-300 hover:bg-blue-50/40 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors flex items-center justify-between gap-2"
+        >
+          <span className={selectedLabel ? "truncate" : "truncate text-slate-400"}>
+            {selectedLabel || placeholder}
+          </span>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[calc(100vw-2rem)] p-0 sm:w-[22rem]" align="start">
+        <Command>
+          <CommandInput placeholder="Search approvers by name or email..." />
+          <CommandList>
+            <CommandEmpty>No matching approvers found.</CommandEmpty>
+            <CommandGroup heading="Suggested users">
+              <CommandItem
+                value="Immediate Manager"
+                onSelect={() => handleSelect("immediate_manager")}
+                className="text-xs"
+              >
+                <Check
+                  className={`w-3.5 h-3.5 ${
+                    assigned?.user_id === "immediate_manager"
+                      ? "opacity-100"
+                      : "opacity-0"
+                  }`}
+                />
+                <div className="min-w-0">
+                  <div className="font-medium text-slate-700">Immediate Manager</div>
+                  <div className="text-[11px] text-slate-400">
+                    Routes to the requester's department manager
+                  </div>
+                </div>
+              </CommandItem>
+              {approvers.map((approver) => (
+                <CommandItem
+                  key={approver.id}
+                  value={`${approver.name} ${approver.email}`}
+                  onSelect={() => handleSelect(approver.id)}
+                  className="text-xs"
+                >
+                  <Check
+                    className={`w-3.5 h-3.5 ${
+                      assigned?.user_id === approver.id
+                        ? "opacity-100"
+                        : "opacity-0"
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-700 truncate">
+                      {approver.name}
+                    </div>
+                    <div className="text-[11px] text-slate-400 truncate">
+                      {approver.email}
+                    </div>
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function AdminPage() {
   const { user } = useAuthStore();
@@ -854,7 +960,7 @@ export default function AdminPage() {
                     {filteredTemplates.length})
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Expand a form to assign up to 3 sequential approvers and an optional custodian
+                    Expand a form to assign up to {MAX_APPROVER_STEPS} sequential approvers and an optional custodian
                   </p>
                 </div>
                 <Button
@@ -886,6 +992,9 @@ export default function AdminPage() {
                         const isExpanded = expandedTemplate === tmpl.id;
                         const chain = tmpl.approver_chain || [];
                         const custodian = tmpl.custodian;
+                        const selectableApprovers = approvers.filter(
+                          (a) => a.role !== "requestor" && a.is_active !== false,
+                        );
                         return (
                           <div
                             key={tmpl.id}
@@ -966,7 +1075,15 @@ export default function AdminPage() {
                             {isExpanded && (
                               <div className="px-4 pb-4 pt-1 bg-slate-50/50 animate-slide-up">
                                 <div className="space-y-2">
-                                  {[1, 2, 3].map((step) => {
+                                  <div className="flex items-center justify-between gap-3 px-1 pb-1">
+                                    <p className="text-[11px] text-slate-500">
+                                      Approval route
+                                    </p>
+                                    <Badge className="bg-blue-50 text-blue-700 border-blue-100 text-[10px]">
+                                      {chain.length}/{MAX_APPROVER_STEPS} approvers
+                                    </Badge>
+                                  </div>
+                                  {APPROVER_STEPS.map((step) => {
                                     const assigned = chain.find(
                                       (a) => a.step === step,
                                     );
@@ -979,43 +1096,19 @@ export default function AdminPage() {
                                           {step}
                                         </div>
                                         <div className="flex-1">
-                                          <Select
-                                            value={assigned?.user_id || ""}
-                                            onValueChange={(v) =>
+                                          <ApproverPicker
+                                            assigned={assigned}
+                                            approvers={selectableApprovers}
+                                            placeholder={`Step ${step} approver (optional)`}
+                                            testId={`approver-step-${step}-${tmpl.id}`}
+                                            onSelect={(v) =>
                                               handleAssignApprover(
                                                 tmpl.id,
                                                 step,
                                                 v,
                                               )
                                             }
-                                          >
-                                            <SelectTrigger
-                                              data-testid={`approver-step-${step}-${tmpl.id}`}
-                                              className="h-8 text-xs border-slate-200"
-                                            >
-                                              <SelectValue
-                                                placeholder={`Step ${step} approver (optional)`}
-                                              />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem
-                                                key="immediate_manager"
-                                                value="immediate_manager"
-                                              >
-                                                Immediate Manager
-                                              </SelectItem>
-                                              {approvers
-                                                .filter((a) => a.role !== "requestor")
-                                                .map((a) => (
-                                                  <SelectItem
-                                                    key={a.id}
-                                                    value={a.id}
-                                                  >
-                                                    {a.name} ({a.email})
-                                                  </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                          </Select>
+                                          />
                                         </div>
                                         {assigned && (
                                           <button

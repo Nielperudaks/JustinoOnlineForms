@@ -3,6 +3,8 @@ import jwt
 import asyncio
 import logging
 import resend
+from html import escape
+from urllib.parse import quote
 from email_validator import EmailNotValidError, validate_email
 from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
@@ -42,6 +44,75 @@ REPLY_TO_EMAIL = os.environ.get('REPLY_TO_EMAIL', '')
 RESEND_ALLOW_TEST_MODE = os.environ.get('RESEND_ALLOW_TEST_MODE', 'false').lower() == 'true'
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
+
+
+def get_frontend_url() -> str:
+    return (
+        os.environ.get("FRONTEND_URL")
+        or os.environ.get("APP_URL")
+        or os.environ.get("CLIENT_URL")
+        or "http://localhost:3000"
+    ).rstrip("/")
+
+
+def build_request_url(request_id: str) -> str:
+    return f"{get_frontend_url()}/?request={quote(str(request_id), safe='')}"
+
+
+def render_request_email(
+    *,
+    heading: str,
+    request_id: str,
+    request_number: str,
+    request_title: str,
+    intro: str,
+    requester_name: str = "",
+    actor_name: str = "",
+    status_label: str = "",
+    comments: str = "",
+    action_label: str = "Review request",
+) -> str:
+    request_url = build_request_url(request_id)
+    detail_rows = [
+        ("Request no.", request_number),
+        ("Form", request_title),
+        ("Requester", requester_name),
+        ("Updated by", actor_name),
+        ("Status", status_label),
+        ("Comments", comments),
+    ]
+    rows_html = "".join(
+        f"""
+        <tr>
+          <td style="padding:10px 12px;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e8f0;">{escape(label)}</td>
+          <td style="padding:10px 12px;color:#0f172a;font-size:14px;font-weight:600;border-bottom:1px solid #e2e8f0;">{escape(str(value))}</td>
+        </tr>
+        """
+        for label, value in detail_rows
+        if value
+    )
+
+    return f"""
+    <div style="margin:0;padding:24px;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+      <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+        <div style="background:#0f172a;padding:18px 22px;">
+          <div style="color:#93c5fd;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;">Justino Online Forms</div>
+          <h1 style="margin:8px 0 0;color:#ffffff;font-size:22px;line-height:1.25;">{escape(heading)}</h1>
+        </div>
+        <div style="padding:22px;">
+          <p style="margin:0 0 18px;color:#334155;font-size:15px;line-height:1.55;">{escape(intro)}</p>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:22px;">
+            <tbody>{rows_html}</tbody>
+          </table>
+          <a href="{escape(request_url, quote=True)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;padding:11px 16px;border-radius:6px;">{escape(action_label)}</a>
+          <p style="margin:18px 0 0;color:#64748b;font-size:12px;line-height:1.45;">
+            If the button does not open, copy this link into your browser:<br />
+            <a href="{escape(request_url, quote=True)}" style="color:#2563eb;">{escape(request_url)}</a>
+          </p>
+        </div>
+      </div>
+    </div>
+    """
 
 
 def hash_password(password: str) -> str:
