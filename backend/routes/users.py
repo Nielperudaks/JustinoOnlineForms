@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from utils.helpers import db, hash_password, require_admin, require_form_manager, get_current_user
+from utils.cache import invalidate_metadata_cache, invalidate_stats_cache, metadata_cache
 import uuid
 from datetime import datetime, timezone
 
@@ -36,6 +37,21 @@ async def list_users(
     search: Optional[str] = None,
     current=Depends(require_form_manager)
 ):
+    cache_key = (
+        current.get("role"),
+        current.get("department_id", ""),
+        department_id or "",
+        role or "",
+        search or "",
+    )
+    return await metadata_cache.get_or_set(
+        "users",
+        cache_key,
+        lambda: _list_users_uncached(department_id, role, search, current),
+    )
+
+
+async def _list_users_uncached(department_id, role, search, current):
     query = {}
     if current.get("role") == "manager":
         query["department_id"] = current.get("department_id")
@@ -70,6 +86,8 @@ async def create_user(req: UserCreate, admin=Depends(require_admin)):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user)
+    invalidate_metadata_cache()
+    invalidate_stats_cache()
     return {k: v for k, v in user.items() if k not in ("_id", "password_hash")}
 
 
@@ -82,6 +100,8 @@ async def update_user(user_id: str, req: UserUpdate, admin=Depends(require_admin
     result = await db.users.update_one({"id": user_id}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
+    invalidate_metadata_cache()
+    invalidate_stats_cache()
     user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
     return user
 
@@ -91,11 +111,22 @@ async def delete_user(user_id: str, admin=Depends(require_admin)):
     result = await db.users.delete_one({"id": user_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
+    invalidate_metadata_cache()
+    invalidate_stats_cache()
     return {"message": "User deleted"}
 
 
 @users_router.get("/approvers")
 async def list_approvers(department_id: Optional[str] = None, user=Depends(get_current_user)):
+    cache_key = (user.get("role"), user.get("department_id", ""), department_id or "")
+    return await metadata_cache.get_or_set(
+        "approvers",
+        cache_key,
+        lambda: _list_approvers_uncached(department_id, user),
+    )
+
+
+async def _list_approvers_uncached(department_id, user):
     query = {"role": {"$in": ["approver", "both", "manager", "super_admin"]}}
     if user.get("role") == "manager":
         query["department_id"] = user.get("department_id")
@@ -107,6 +138,15 @@ async def list_approvers(department_id: Optional[str] = None, user=Depends(get_c
 
 @users_router.get("/custodians")
 async def list_custodians(department_id: Optional[str] = None, user=Depends(get_current_user)):
+    cache_key = (user.get("role"), user.get("department_id", ""), department_id or "")
+    return await metadata_cache.get_or_set(
+        "custodians",
+        cache_key,
+        lambda: _list_custodians_uncached(department_id, user),
+    )
+
+
+async def _list_custodians_uncached(department_id, user):
     query = {"is_active": True}
     if user.get("role") == "manager":
         query["department_id"] = user.get("department_id")
@@ -127,4 +167,5 @@ async def change_password(user_id: str, req: PasswordChange, current=Depends(get
     if current["id"] == user_id and not verify_password(req.current_password, user["password_hash"]):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     await db.users.update_one({"id": user_id}, {"$set": {"password_hash": hash_password(req.new_password)}})
+    invalidate_metadata_cache()
     return {"message": "Password changed"}

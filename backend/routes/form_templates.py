@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from utils.helpers import db, require_form_manager, get_current_user
+from utils.cache import invalidate_metadata_cache, invalidate_stats_cache, metadata_cache
 import uuid
 from datetime import datetime, timezone
 
@@ -131,20 +132,36 @@ async def list_templates(
     department_id: Optional[str] = None,
     user=Depends(get_current_user)
 ):
+    cache_key = (department_id or "",)
+    return await metadata_cache.get_or_set(
+        "templates",
+        cache_key,
+        lambda: _list_templates_uncached(department_id),
+    )
+
+
+async def _list_templates_uncached(department_id):
     query = {"is_active": True}
     if department_id:
         query["department_id"] = department_id
-    templates = await db.form_templates.find(query, {"_id": 0}).to_list(500)
-    return templates
+    return await db.form_templates.find(query, {"_id": 0}).to_list(500)
 
 
 @templates_router.get("/all")
 async def list_all_templates(current=Depends(require_form_manager)):
+    cache_key = (current.get("role"), manager_department_id(current))
+    return await metadata_cache.get_or_set(
+        "all_templates",
+        cache_key,
+        lambda: _list_all_templates_uncached(current),
+    )
+
+
+async def _list_all_templates_uncached(current):
     query = {}
     if not is_super_admin(current):
         query["department_id"] = manager_department_id(current)
-    templates = await db.form_templates.find(query, {"_id": 0}).to_list(500)
-    return templates
+    return await db.form_templates.find(query, {"_id": 0}).to_list(500)
 
 
 @templates_router.get("/{template_id}")
@@ -175,6 +192,8 @@ async def create_template(req: TemplateCreate, current=Depends(require_form_mana
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.form_templates.insert_one(tmpl)
+    invalidate_metadata_cache()
+    invalidate_stats_cache()
     return {k: v for k, v in tmpl.items() if k != "_id"}
 
 
@@ -206,6 +225,8 @@ async def update_template(template_id: str, req: TemplateUpdate, current=Depends
     result = await db.form_templates.update_one({"id": template_id}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Template not found")
+    invalidate_metadata_cache()
+    invalidate_stats_cache()
     tmpl = await db.form_templates.find_one({"id": template_id}, {"_id": 0})
     return tmpl
 
@@ -236,4 +257,6 @@ async def delete_template(template_id: str, current=Depends(require_form_manager
     result = await db.form_templates.delete_one({"id": template_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Template not found")
+    invalidate_metadata_cache()
+    invalidate_stats_cache()
     return {"message": "Template deleted"}

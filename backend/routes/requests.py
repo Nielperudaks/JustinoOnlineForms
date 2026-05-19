@@ -2,11 +2,21 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from utils.helpers import db, get_current_user, render_request_email, send_email_notification
+from utils.cache import invalidate_stats_cache
 import uuid
 from datetime import datetime, timezone
 from realtime import manager
 
 requests_router = APIRouter(prefix="/requests", tags=["requests"])
+
+REQUEST_LIST_PROJECTION = {
+    "_id": 0,
+    "form_data": 0,
+    "notes": 0,
+    "requester_email": 0,
+    "approvals": 0,
+    "custodian": 0,
+}
 
 
 class RequestCreate(BaseModel):
@@ -88,7 +98,7 @@ async def list_requests(
 
     total = await db.requests.count_documents(query)
     skip = offset if offset else (page - 1) * limit
-    reqs = await db.requests.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    reqs = await db.requests.find(query, REQUEST_LIST_PROJECTION).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
 
     return {"items": reqs, "total": total, "page": page, "limit": limit, "offset": skip}
 
@@ -225,6 +235,7 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     }
 
     await db.requests.insert_one(request_doc)
+    invalidate_stats_cache()
     result = {k: v for k, v in request_doc.items() if k != "_id"}
 
     # Notify first approver or custodian
@@ -337,6 +348,7 @@ async def cancel_request(request_id: str, user=Depends(get_current_user)):
             }
         },
     )
+    invalidate_stats_cache()
 
     updated = await db.requests.find_one({"id": request_id}, {"_id": 0})
 
@@ -401,6 +413,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                 "updated_at": now
             }},
         )
+        invalidate_stats_cache()
 
         approver_ids = list({a.get("approver_id") for a in approvals if a.get("approver_id")})
         approver_users = []
@@ -526,6 +539,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
             "status": "rejected",
             "updated_at": now
         }})
+        invalidate_stats_cache()
         # Notify requester
         notif = {
             "id": str(uuid.uuid4()),
@@ -592,6 +606,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                 "current_approval_step": next_step,
                 "updated_at": now
             }})
+            invalidate_stats_cache()
             next_approver_data = next((a for a in approvals if a["step"] == next_step), None)
             if next_approver_data:
                 next_approver = await db.users.find_one({"id": next_approver_data["approver_id"]}, {"_id": 0})
@@ -650,6 +665,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                     "current_approval_step": current_step + 1,
                     "updated_at": now
                 }})
+                invalidate_stats_cache()
                 custodian_user = await db.users.find_one({"id": custodian["user_id"]}, {"_id": 0})
                 if custodian_user:
                     notif = {
@@ -691,6 +707,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                     "status": "approved",
                     "updated_at": now
                 }})
+                invalidate_stats_cache()
                 notif = {
                     "id": str(uuid.uuid4()),
                     "user_id": req["requester_id"],

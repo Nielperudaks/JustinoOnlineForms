@@ -33,8 +33,18 @@ pwd_context = CryptContext(
 
 security = HTTPBearer()
 
+def get_int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
 mongo_url = os.environ['MONGO_URL']
-_client = AsyncIOMotorClient(mongo_url)
+_client = AsyncIOMotorClient(
+    mongo_url,
+    maxPoolSize=get_int_env("MONGO_MAX_POOL_SIZE", 20),
+)
 db = _client[os.environ['DB_NAME']]
 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')

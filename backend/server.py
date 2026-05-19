@@ -1,19 +1,16 @@
 from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from starlette.middleware.gzip import GZipMiddleware
 import os
 import logging
 from pathlib import Path
 from fastapi import WebSocket
 from realtime import manager
+from utils.helpers import db, _client as client, get_int_env
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
-
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
 
 app = FastAPI(redirect_slashes=False)
 api_router = APIRouter(prefix="/api")
@@ -56,11 +53,46 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=get_int_env("GZIP_MINIMUM_SIZE", 1000),
+)
+
+
+def get_bool_env(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
+
+
+async def ensure_indexes():
+    await db.users.create_index("id", unique=True)
+    await db.users.create_index("email", unique=True)
+    await db.users.create_index("department_id")
+    await db.departments.create_index("id", unique=True)
+    await db.departments.create_index("code", unique=True)
+    await db.form_templates.create_index("id", unique=True)
+    await db.form_templates.create_index([("department_id", 1), ("is_active", 1)])
+    await db.requests.create_index("id", unique=True)
+    await db.requests.create_index([("created_at", -1)])
+    await db.requests.create_index([("department_id", 1), ("status", 1), ("created_at", -1)])
+    await db.requests.create_index([("requester_id", 1), ("created_at", -1)])
+    await db.requests.create_index([("approvals.approver_id", 1), ("status", 1), ("created_at", -1)])
+    await db.requests.create_index([("custodian.user_id", 1), ("status", 1), ("created_at", -1)])
+    await db.notifications.create_index("id", unique=True)
+    await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
+    await db.notifications.create_index([("user_id", 1), ("is_read", 1)])
 
 @app.on_event("startup")
 async def startup_event():
-    from seed import seed_data
-    await seed_data(db)
+    if get_bool_env("ENSURE_INDEXES_ON_STARTUP", True):
+        await ensure_indexes()
+    if get_bool_env("SEED_ON_STARTUP", True):
+        from seed import seed_data
+        await seed_data(db)
+    else:
+        logger.info("Startup seed skipped: SEED_ON_STARTUP is false")
     await manager.startup()
 
 @app.on_event("shutdown")

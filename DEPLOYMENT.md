@@ -22,6 +22,14 @@ Backend environment variables:
 | `RESEND_API_KEY`| Optional: Resend API key for email  |
 | `SENDER_EMAIL`  | Optional: Sender email for Resend   |
 | `FRONTEND_URL`  | Public frontend URL used in request-review email links |
+| `MONGO_MAX_POOL_SIZE` | Optional: MongoDB connection pool size; `20` is the backend default |
+| `METADATA_CACHE_TTL_SECONDS` | Optional: in-memory metadata cache TTL; default `60`, set `0` to disable |
+| `STATS_CACHE_TTL_SECONDS` | Optional: in-memory dashboard stats cache TTL; default `10`, set `0` to disable |
+| `GZIP_MINIMUM_SIZE` | Optional: minimum response bytes before gzip; default `1000` |
+| `SEED_ON_STARTUP` | Set to `false` on production Railway services after initial seeding |
+| `ENSURE_INDEXES_ON_STARTUP` | Optional: create/confirm Mongo indexes at boot; default `true` |
+
+For Railway, set `SEED_ON_STARTUP=false` after your database has been seeded. The backend still ensures indexes by default, uses gzip for larger JSON responses, limits the Mongo pool size, and caches small metadata/stat responses briefly to reduce egress and repeated database work.
 
 After deployment, note the **backend base URL** (e.g. `https://your-api.onrender.com`). Do **not** include `/api` — the frontend adds that.
 

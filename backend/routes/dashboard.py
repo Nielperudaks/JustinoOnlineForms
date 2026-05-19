@@ -1,36 +1,56 @@
 from fastapi import APIRouter, Depends
 from utils.helpers import db, get_current_user
+from utils.cache import stats_cache
 
 dashboard_router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @dashboard_router.get("/stats")
 async def get_dashboard_stats(user=Depends(get_current_user)):
+    cache_key = (user["id"], user["role"], user.get("department_id", ""))
+    return await stats_cache.get_or_set("dashboard_stats", cache_key, lambda: compute_dashboard_stats(user))
+
+
+async def compute_dashboard_stats(user):
     uid = user["id"]
     role = user["role"]
 
     if role == "super_admin":
-        total = await db.requests.count_documents({})
-        pending = await db.requests.count_documents({"status": {"$in": ["in_progress", "pending"]}})
-        approved = await db.requests.count_documents({"status": "approved"})
-        rejected = await db.requests.count_documents({"status": "rejected"})
-        cancelled = await db.requests.count_documents({"status": "cancelled"})
+        request_match = {}
         total_users = await db.users.count_documents({})
         total_templates = await db.form_templates.count_documents({"is_active": True})
     else:
-        user_scope = {
+        request_match = {
             "$or": [
                 {"requester_id": uid},
                 {"approvals": {"$elemMatch": {"approver_id": uid}}},
             ]
         }
-        total = await db.requests.count_documents(user_scope)
-        pending = await db.requests.count_documents({**user_scope, "status": {"$in": ["in_progress", "pending"]}})
-        approved = await db.requests.count_documents({**user_scope, "status": "approved"})
-        rejected = await db.requests.count_documents({**user_scope, "status": "rejected"})
-        cancelled = await db.requests.count_documents({**user_scope, "status": "cancelled"})
         total_users = 0
         total_templates = 0
+
+    request_stats = await db.requests.aggregate([
+        {"$match": request_match},
+        {
+            "$group": {
+                "_id": None,
+                "total_requests": {"$sum": 1},
+                "pending_requests": {
+                    "$sum": {"$cond": [{"$in": ["$status", ["in_progress", "pending"]]}, 1, 0]}
+                },
+                "approved_requests": {
+                    "$sum": {"$cond": [{"$eq": ["$status", "approved"]}, 1, 0]}
+                },
+                "rejected_requests": {
+                    "$sum": {"$cond": [{"$eq": ["$status", "rejected"]}, 1, 0]}
+                },
+                "cancelled_requests": {
+                    "$sum": {"$cond": [{"$eq": ["$status", "cancelled"]}, 1, 0]}
+                },
+            }
+        },
+    ]).to_list(1)
+    request_stats = request_stats[0] if request_stats else {}
 
     my_pending_approvals = await db.requests.count_documents({
         "$or": [
@@ -49,11 +69,11 @@ async def get_dashboard_stats(user=Depends(get_current_user)):
     unread_notifs = await db.notifications.count_documents({"user_id": uid, "is_read": False})
 
     return {
-        "total_requests": total,
-        "pending_requests": pending,
-        "approved_requests": approved,
-        "rejected_requests": rejected,
-        "cancelled_requests": cancelled,
+        "total_requests": request_stats.get("total_requests", 0),
+        "pending_requests": request_stats.get("pending_requests", 0),
+        "approved_requests": request_stats.get("approved_requests", 0),
+        "rejected_requests": request_stats.get("rejected_requests", 0),
+        "cancelled_requests": request_stats.get("cancelled_requests", 0),
         "my_pending_approvals": my_pending_approvals,
         "unread_notifications": unread_notifs,
         "total_users": total_users,
