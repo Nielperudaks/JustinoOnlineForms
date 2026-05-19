@@ -47,6 +47,7 @@ export default function DashboardPage() {
 
   const canCreateRequest = user?.role === "requestor" || user?.role === "both" || user?.role === "manager" || user?.role === "super_admin";
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [requestDetailLoading, setRequestDetailLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const linkedRequestId = searchParams.get("request");
 
@@ -304,24 +305,30 @@ export default function DashboardPage() {
   };
 
   const handleSelectRequest = async (req) => {
+    setSelectedRequest(req);
+    setRequestDetailLoading(true);
     try {
       const res = await getRequest(req.id);
       setSelectedRequest(res.data);
     } catch {
       setSelectedRequest(req);
+    } finally {
+      setRequestDetailLoading(false);
     }
   };
 
   useEffect(() => {
     if (!linkedRequestId) return;
 
+    setRequestDetailLoading(true);
     getRequest(linkedRequestId)
       .then((res) => setSelectedRequest(res.data))
       .catch((err) => {
         toast.error(
           err.response?.data?.detail || "Unable to open the linked request",
         );
-      });
+      })
+      .finally(() => setRequestDetailLoading(false));
   }, [linkedRequestId]);
 
   const handleMarkRead = async (id) => {
@@ -351,7 +358,7 @@ export default function DashboardPage() {
     fetchRequests({ offset: requests.length, append: true });
   }, [fetchRequests, hasMoreRequests, loading, loadingMoreRequests, requests.length]);
 
-  const isShowingMobileDetail = !!selectedRequest;
+  const isShowingMobileDetail = !!selectedRequest || requestDetailLoading;
 
   return (
     <div
@@ -497,7 +504,11 @@ export default function DashboardPage() {
                 onAction={handleAction}
                 onCancel={handleCancel}
                 departments={departments}
-                onBack={() => setSelectedRequest(null)}
+                isLoading={requestDetailLoading}
+                onBack={() => {
+                  setRequestDetailLoading(false);
+                  setSelectedRequest(null);
+                }}
               />
             </div>
           ) : (
@@ -550,6 +561,7 @@ export default function DashboardPage() {
               onAction={handleAction}
               onCancel={handleCancel}
               departments={departments}
+              isLoading={requestDetailLoading}
             />
           </div>
         </div>

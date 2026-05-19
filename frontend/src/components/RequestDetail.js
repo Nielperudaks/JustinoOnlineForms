@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowLeft,
   FileText,
@@ -185,6 +186,64 @@ function ApprovalChain({ approvals, title = "Approval Chain" }) {
   );
 }
 
+function RequestDetailSkeleton({ onBack }) {
+  return (
+    <div
+      className="h-full overflow-y-auto overflow-x-hidden"
+      data-testid="request-detail-loading"
+      aria-busy="true"
+    >
+      <div className="max-w-3xl mx-auto p-4 sm:p-6 lg:p-10">
+        {onBack && (
+          <div className="mb-4">
+            <Skeleton className="h-8 w-28" />
+          </div>
+        )}
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-6 w-24 rounded" />
+            <Skeleton className="h-6 w-32 rounded" />
+          </div>
+          <Skeleton className="h-8 w-3/4" />
+          <div className="flex flex-wrap gap-3">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-5 w-44" />
+            <Skeleton className="h-5 w-36" />
+          </div>
+        </div>
+
+        <Separator className="my-6" />
+
+        <div className="mb-6">
+          <Skeleton className="h-5 w-32 mb-3" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[1, 2, 3, 4].map((item) => (
+              <div
+                key={item}
+                className="p-3 bg-slate-50 rounded-lg border border-slate-100"
+              >
+                <Skeleton className="h-3 w-20 mb-3" />
+                <Skeleton className="h-5 w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Separator className="my-6" />
+
+        <div className="space-y-3">
+          <Skeleton className="h-5 w-28" />
+          <div className="flex flex-wrap items-center gap-2">
+            {[1, 2, 3].map((item) => (
+              <Skeleton key={item} className="h-11 w-36 rounded-lg" />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RequestDetail({
   request,
   currentUser,
@@ -192,10 +251,15 @@ export default function RequestDetail({
   onCancel,
   departments,
   onBack,
+  isLoading = false,
 }) {
   const [comments, setComments] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+
+  if (isLoading) {
+    return <RequestDetailSkeleton onBack={onBack} />;
+  }
 
   if (!request) {
     return (
