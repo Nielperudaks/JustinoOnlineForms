@@ -25,6 +25,7 @@ import {
 import {
   isApproverUser,
   isCustodianUser,
+  mergeServerItemsWithLocalChanges,
   removeById,
   upsertById,
 } from "@/pages/adminState";
@@ -77,6 +78,7 @@ import {
 } from "lucide-react";
 
 const MAX_APPROVER_STEPS = 8;
+const LOCAL_CHANGE_TTL_MS = 90000;
 const APPROVER_STEPS = Array.from(
   { length: MAX_APPROVER_STEPS },
   (_, index) => index + 1,
@@ -244,6 +246,21 @@ export default function AdminPage() {
   const [stats, setStats] = useState({});
   const latestRefreshId = useRef(0);
   const refreshTimeoutRef = useRef(null);
+  const localChangesRef = useRef({
+    users: new Map(),
+    templates: new Map(),
+    departments: new Map(),
+  });
+
+  const pruneLocalChanges = useCallback((now = Date.now()) => {
+    Object.values(localChangesRef.current).forEach((changes) => {
+      changes.forEach((change, id) => {
+        if (now - change.changedAt > LOCAL_CHANGE_TTL_MS) {
+          changes.delete(id);
+        }
+      });
+    });
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const isSuperAdmin = user?.role === "super_admin";
   const isManager = user?.role === "manager";
@@ -301,23 +318,53 @@ export default function AdminPage() {
         return;
       }
 
+      const now = Date.now();
+      pruneLocalChanges(now);
+      const localUsers = Array.from(localChangesRef.current.users.values());
+      const localTemplates = Array.from(localChangesRef.current.templates.values());
+      const localDepartments = Array.from(localChangesRef.current.departments.values());
       const visibleDepartments = isManager
         ? deptRes.data.filter((dept) => dept.id === user?.department_id)
         : deptRes.data;
-      setDepartments(visibleDepartments);
-      setUsers(usersRes.data);
-      setTemplates(tmplRes.data);
-      setApprovers(approversRes.data);
-      setCustodians(custodiansRes.data);
+      const mergedDepartments = mergeServerItemsWithLocalChanges(
+        visibleDepartments,
+        localDepartments,
+        { now, ttlMs: LOCAL_CHANGE_TTL_MS },
+      );
+      const mergedUsers = mergeServerItemsWithLocalChanges(
+        usersRes.data,
+        localUsers,
+        { now, ttlMs: LOCAL_CHANGE_TTL_MS },
+      );
+      const mergedTemplates = mergeServerItemsWithLocalChanges(
+        tmplRes.data,
+        localTemplates,
+        { now, ttlMs: LOCAL_CHANGE_TTL_MS },
+      );
+      const mergedApprovers = mergeServerItemsWithLocalChanges(
+        approversRes.data,
+        localUsers,
+        { now, ttlMs: LOCAL_CHANGE_TTL_MS },
+      ).filter(isApproverUser);
+      const mergedCustodians = mergeServerItemsWithLocalChanges(
+        custodiansRes.data,
+        localUsers,
+        { now, ttlMs: LOCAL_CHANGE_TTL_MS },
+      ).filter(isCustodianUser);
+      setDepartments(mergedDepartments);
+      setUsers(mergedUsers);
+      setTemplates(mergedTemplates);
+      setApprovers(mergedApprovers);
+      setCustodians(mergedCustodians);
       setStats({
         ...statsRes.data,
-        total_users: usersRes.data.length,
-        total_templates: tmplRes.data.length,
+        total_users: mergedUsers.length,
+        total_templates: mergedTemplates.length,
       });
     } catch (err) {
       console.error(err);
     }
-  }, [isManager, isSuperAdmin, user?.department_id]);
+  }, [isManager, isSuperAdmin, pruneLocalChanges, user?.department_id]);
 
   const refreshAll = useCallback(() => {
     void fetchAll();
@@ -333,7 +380,24 @@ export default function AdminPage() {
     }, 400);
   }, [refreshAll]);
 
+  const rememberLocalChange = useCallback((collection, itemOrId, deleted = false) => {
+    const id = typeof itemOrId === "string" ? itemOrId : itemOrId?.id;
+    if (!id) {
+      return;
+    }
+
+    pruneLocalChanges();
+    latestRefreshId.current += 1;
+    localChangesRef.current[collection].set(id, {
+      id,
+      item: deleted ? null : itemOrId,
+      deleted,
+      changedAt: Date.now(),
+    });
+  }, [pruneLocalChanges]);
+
   const applyUserToState = useCallback((savedUser) => {
+    rememberLocalChange("users", savedUser);
     setUsers((prev) => {
       const next = upsertById(prev, savedUser);
       setStats((current) => ({ ...current, total_users: next.length }));
@@ -349,9 +413,10 @@ export default function AdminPage() {
         ? upsertById(prev, savedUser)
         : removeById(prev, savedUser.id),
     );
-  }, []);
+  }, [rememberLocalChange]);
 
   const removeUserFromState = useCallback((userId) => {
+    rememberLocalChange("users", userId, true);
     setUsers((prev) => {
       const next = removeById(prev, userId);
       setStats((current) => ({ ...current, total_users: next.length }));
@@ -359,23 +424,25 @@ export default function AdminPage() {
     });
     setApprovers((prev) => removeById(prev, userId));
     setCustodians((prev) => removeById(prev, userId));
-  }, []);
+  }, [rememberLocalChange]);
 
   const applyTemplateToState = useCallback((savedTemplate) => {
+    rememberLocalChange("templates", savedTemplate);
     setTemplates((prev) => {
       const next = upsertById(prev, savedTemplate);
       setStats((current) => ({ ...current, total_templates: next.length }));
       return next;
     });
-  }, []);
+  }, [rememberLocalChange]);
 
   const removeTemplateFromState = useCallback((templateId) => {
+    rememberLocalChange("templates", templateId, true);
     setTemplates((prev) => {
       const next = removeById(prev, templateId);
       setStats((current) => ({ ...current, total_templates: next.length }));
       return next;
     });
-  }, []);
+  }, [rememberLocalChange]);
 
   useEffect(() => {
     if (!canManageSettings) {
@@ -688,6 +755,7 @@ export default function AdminPage() {
     setIsSavingDepartment(true);
     try {
       const { data: savedDepartment } = await createDepartment(payload);
+      rememberLocalChange("departments", savedDepartment);
       setDepartments((prev) => upsertById(prev, savedDepartment));
       toast.success("Department created");
       resetDepartmentForm();
@@ -728,6 +796,7 @@ export default function AdminPage() {
 
     try {
       await deleteDepartment(dept.id);
+      rememberLocalChange("departments", dept.id, true);
       setDepartments((prev) => removeById(prev, dept.id));
       toast.success("Department removed");
     } catch (err) {
@@ -750,6 +819,7 @@ export default function AdminPage() {
     setIsUpdatingDepartment(true);
     try {
       const { data: savedDepartment } = await updateDepartment(deptId, payload);
+      rememberLocalChange("departments", savedDepartment);
       setDepartments((prev) => upsertById(prev, savedDepartment));
       toast.success("Department updated");
       cancelEditingDepartment();

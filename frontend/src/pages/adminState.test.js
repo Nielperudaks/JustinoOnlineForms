@@ -3,6 +3,7 @@ import {
   removeById,
   isApproverUser,
   isCustodianUser,
+  mergeServerItemsWithLocalChanges,
 } from "./adminState";
 
 describe("admin state helpers", () => {
@@ -40,5 +41,49 @@ describe("admin state helpers", () => {
     expect(isApproverUser({ role: "requestor" })).toBe(false);
     expect(isCustodianUser({ is_active: true })).toBe(true);
     expect(isCustodianUser({ is_active: false })).toBe(false);
+  });
+
+  test("keeps recent local template changes when a stale refresh arrives", () => {
+    const staleServerTemplates = [
+      {
+        id: "template-1",
+        approver_chain: [{ step: 1, user_id: "old-approver" }],
+        updated_at: "2026-05-21T00:00:00+00:00",
+      },
+    ];
+    const localChanges = [
+      {
+        id: "template-1",
+        item: {
+          id: "template-1",
+          approver_chain: [{ step: 1, user_id: "new-approver" }],
+          updated_at: "2026-05-21T00:01:00+00:00",
+        },
+        changedAt: 1000,
+      },
+    ];
+
+    expect(
+      mergeServerItemsWithLocalChanges(staleServerTemplates, localChanges, {
+        now: 1500,
+        ttlMs: 90000,
+      }),
+    ).toEqual([
+      {
+        id: "template-1",
+        approver_chain: [{ step: 1, user_id: "new-approver" }],
+        updated_at: "2026-05-21T00:01:00+00:00",
+      },
+    ]);
+  });
+
+  test("keeps recent local removals when a stale refresh reintroduces an item", () => {
+    expect(
+      mergeServerItemsWithLocalChanges(
+        [{ id: "template-1", name: "Deleted template" }],
+        [{ id: "template-1", deleted: true, changedAt: 1000 }],
+        { now: 1500, ttlMs: 90000 },
+      ),
+    ).toEqual([]);
   });
 });
