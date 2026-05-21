@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
@@ -21,6 +21,12 @@ import {
   listCustodians,
   getDashboardStats,
 } from "@/lib/api";
+import {
+  isApproverUser,
+  isCustodianUser,
+  removeById,
+  upsertById,
+} from "@/pages/adminState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -234,6 +240,7 @@ export default function AdminPage() {
   const [approvers, setApprovers] = useState([]);
   const [custodians, setCustodians] = useState([]);
   const [stats, setStats] = useState({});
+  const latestRefreshId = useRef(0);
   const [searchQuery, setSearchQuery] = useState("");
   const isSuperAdmin = user?.role === "super_admin";
   const isManager = user?.role === "manager";
@@ -271,6 +278,9 @@ export default function AdminPage() {
   const [isUpdatingDepartment, setIsUpdatingDepartment] = useState(false);
 
   const fetchAll = useCallback(async () => {
+    const refreshId = latestRefreshId.current + 1;
+    latestRefreshId.current = refreshId;
+
     try {
       const departmentParams = isManager && user?.department_id
         ? { department_id: user.department_id }
@@ -284,6 +294,10 @@ export default function AdminPage() {
           listCustodians(departmentParams),
           getDashboardStats(),
         ]);
+      if (refreshId !== latestRefreshId.current) {
+        return;
+      }
+
       const visibleDepartments = isManager
         ? deptRes.data.filter((dept) => dept.id === user?.department_id)
         : deptRes.data;
@@ -302,6 +316,54 @@ export default function AdminPage() {
     }
   }, [isManager, isSuperAdmin, user?.department_id]);
 
+  const refreshAll = useCallback(() => {
+    void fetchAll();
+  }, [fetchAll]);
+
+  const applyUserToState = useCallback((savedUser) => {
+    setUsers((prev) => {
+      const next = upsertById(prev, savedUser);
+      setStats((current) => ({ ...current, total_users: next.length }));
+      return next;
+    });
+    setApprovers((prev) =>
+      isApproverUser(savedUser)
+        ? upsertById(prev, savedUser)
+        : removeById(prev, savedUser.id),
+    );
+    setCustodians((prev) =>
+      isCustodianUser(savedUser)
+        ? upsertById(prev, savedUser)
+        : removeById(prev, savedUser.id),
+    );
+  }, []);
+
+  const removeUserFromState = useCallback((userId) => {
+    setUsers((prev) => {
+      const next = removeById(prev, userId);
+      setStats((current) => ({ ...current, total_users: next.length }));
+      return next;
+    });
+    setApprovers((prev) => removeById(prev, userId));
+    setCustodians((prev) => removeById(prev, userId));
+  }, []);
+
+  const applyTemplateToState = useCallback((savedTemplate) => {
+    setTemplates((prev) => {
+      const next = upsertById(prev, savedTemplate);
+      setStats((current) => ({ ...current, total_templates: next.length }));
+      return next;
+    });
+  }, []);
+
+  const removeTemplateFromState = useCallback((templateId) => {
+    setTemplates((prev) => {
+      const next = removeById(prev, templateId);
+      setStats((current) => ({ ...current, total_templates: next.length }));
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!canManageSettings) {
       navigate("/");
@@ -313,13 +375,13 @@ export default function AdminPage() {
     fetchAll();
   }, [canManageSettings, isManager, navigate, fetchAll]);
 
-  // Reactive updates: poll and refetch when user returns to tab so stats
-  // and lists update when other admins or users make changes.
-  // useReactiveRefresh(fetchAll, {
-  //   intervalMs: 30000,
-  //   refetchOnFocus: true,
-  //   enabled: user?.role === "super_admin",
-  // });
+  // Reactive updates: refetch when the user returns to this tab and poll
+  // periodically so admin data also catches changes made elsewhere.
+  useReactiveRefresh(fetchAll, {
+    intervalMs: 30000,
+    refetchOnFocus: true,
+    enabled: canManageSettings,
+  });
 
   // User management
   const findDepartmentManagerConflict = ({ role, department_id, userId }) => {
@@ -361,10 +423,12 @@ export default function AdminPage() {
         if (userForm.password) {
           updates.password = userForm.password;
         }
-        await updateUser(editingUser.id, updates);
+        const { data: savedUser } = await updateUser(editingUser.id, updates);
+        applyUserToState(savedUser);
         toast.success("User updated");
       } else {
-        await createUser(userForm);
+        const { data: savedUser } = await createUser(userForm);
+        applyUserToState(savedUser);
         toast.success("User created");
       }
       setShowUserForm(false);
@@ -376,7 +440,7 @@ export default function AdminPage() {
         role: "requestor",
         department_id: "",
       });
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to save user");
     }
@@ -399,8 +463,9 @@ export default function AdminPage() {
     if (!window.confirm("Delete this user?")) return;
     try {
       await deleteUser(uid);
+      removeUserFromState(uid);
       toast.success("User deleted");
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error("Failed to delete user");
     }
@@ -408,9 +473,10 @@ export default function AdminPage() {
 
   const handleToggleUserActive = async (u) => {
     try {
-      await updateUser(u.id, { is_active: !u.is_active });
+      const { data: savedUser } = await updateUser(u.id, { is_active: !u.is_active });
+      applyUserToState(savedUser);
       toast.success(u.is_active ? "User deactivated" : "User activated");
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error("Failed to update user");
     }
@@ -448,9 +514,10 @@ export default function AdminPage() {
     }
     chain.sort((a, b) => a.step - b.step);
     try {
-      await updateTemplate(templateId, { approver_chain: chain });
+      const { data: savedTemplate } = await updateTemplate(templateId, { approver_chain: chain });
+      applyTemplateToState(savedTemplate);
       toast.success("Approver assigned");
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error("Failed to assign approver");
     }
@@ -462,9 +529,10 @@ export default function AdminPage() {
     let chain = (tmpl.approver_chain || []).filter((a) => a.step !== step);
     chain = chain.map((a, i) => ({ ...a, step: i + 1 }));
     try {
-      await updateTemplate(templateId, { approver_chain: chain });
+      const { data: savedTemplate } = await updateTemplate(templateId, { approver_chain: chain });
+      applyTemplateToState(savedTemplate);
       toast.success("Approver removed");
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error("Failed to remove approver");
     }
@@ -474,14 +542,15 @@ export default function AdminPage() {
     const custodian = custodians.find((a) => a.id === userId);
     if (!custodian) return;
     try {
-      await updateTemplate(templateId, {
+      const { data: savedTemplate } = await updateTemplate(templateId, {
         custodian: {
           user_id: userId,
           user_name: custodian.name || "",
         },
       });
+      applyTemplateToState(savedTemplate);
       toast.success("Custodian assigned");
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error("Failed to assign custodian");
     }
@@ -489,9 +558,10 @@ export default function AdminPage() {
 
   const handleRemoveCustodian = async (templateId) => {
     try {
-      await updateTemplate(templateId, { custodian: null });
+      const { data: savedTemplate } = await updateTemplate(templateId, { custodian: null });
+      applyTemplateToState(savedTemplate);
       toast.success("Custodian removed");
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error("Failed to remove custodian");
     }
@@ -503,19 +573,21 @@ export default function AdminPage() {
         ? { ...payload, department_id: user.department_id }
         : payload;
       if (templateId) {
-        await updateTemplate(templateId, {
+        const { data: savedTemplate } = await updateTemplate(templateId, {
           name: scopedPayload.name,
           description: scopedPayload.description,
           fields: scopedPayload.fields,
         });
+        applyTemplateToState(savedTemplate);
         toast.success("Form updated");
       } else {
-        await createTemplate(scopedPayload);
+        const { data: savedTemplate } = await createTemplate(scopedPayload);
+        applyTemplateToState(savedTemplate);
         toast.success("Form created");
       }
       setShowBuildFormDialog(false);
       setEditingTemplate(null);
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to save form");
       throw err;
@@ -539,9 +611,10 @@ export default function AdminPage() {
 
     try {
       await deleteTemplate(tmpl.id);
+      removeTemplateFromState(tmpl.id);
       toast.success("Form deleted");
       setExpandedTemplate((prev) => (prev === tmpl.id ? null : prev));
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to delete form");
     }
@@ -595,10 +668,11 @@ export default function AdminPage() {
 
     setIsSavingDepartment(true);
     try {
-      await createDepartment(payload);
+      const { data: savedDepartment } = await createDepartment(payload);
+      setDepartments((prev) => upsertById(prev, savedDepartment));
       toast.success("Department created");
       resetDepartmentForm();
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to create department");
     } finally {
@@ -636,8 +710,9 @@ export default function AdminPage() {
 
     try {
       await deleteDepartment(dept.id);
+      setDepartments((prev) => removeById(prev, dept.id));
       toast.success("Department removed");
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to remove department");
     }
@@ -657,10 +732,11 @@ export default function AdminPage() {
 
     setIsUpdatingDepartment(true);
     try {
-      await updateDepartment(deptId, payload);
+      const { data: savedDepartment } = await updateDepartment(deptId, payload);
+      setDepartments((prev) => upsertById(prev, savedDepartment));
       toast.success("Department updated");
       cancelEditingDepartment();
-      fetchAll();
+      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to update department");
     } finally {
