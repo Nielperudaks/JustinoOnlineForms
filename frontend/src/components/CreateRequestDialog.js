@@ -382,6 +382,19 @@ export default function CreateRequestDialog({
             className="text-sm"
           />
         );
+      case "link":
+        return (
+          <Input
+            data-testid={`field-${field.name}`}
+            type="url"
+            value={val}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={
+              field.placeholder || `Enter ${field.label.toLowerCase()}`
+            }
+            className="text-sm"
+          />
+        );
       case "date":
         return (
           <Input

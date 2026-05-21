@@ -89,7 +89,7 @@ async def validate_manager_assignments(user, approver_chain=None, custodian=None
 class FormField(BaseModel):
     name: str
     label: str
-    type: str  # text, textarea, number, date, select, table, dropzone
+    type: str  # text, link, textarea, number, date, select, table, dropzone
     required: bool = True
     options: Optional[List[str]] = None
     is_multiselect: bool = False

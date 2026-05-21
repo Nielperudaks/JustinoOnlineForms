@@ -107,6 +107,7 @@ class FakeDb:
                     "total_approval_steps": 2,
                     "created_at": "2026-05-19T00:00:00+00:00",
                     "updated_at": "2026-05-19T00:00:00+00:00",
+                    "form_fields": [{"name": "reference_url", "type": "link"}],
                     "form_data": {"attachment": {"base64": "x" * 5000}},
                     "notes": "large internal note",
                     "approvals": [{"comments": "heavy history"}],
@@ -154,6 +155,7 @@ def test_request_list_omits_heavy_detail_fields(monkeypatch):
 
     assert result["items"][0]["id"] == "req-1"
     assert "form_data" not in result["items"][0]
+    assert "form_fields" not in result["items"][0]
     assert "notes" not in result["items"][0]
     assert "requester_email" not in result["items"][0]
     assert "approvals" not in result["items"][0]

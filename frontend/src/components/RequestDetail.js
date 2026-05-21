@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { differenceInHours, format } from "date-fns";
+import { getRequestFieldType, getSafeLinkHref } from "./requestDetailLinks";
 
 const STATUS_CONFIG = {
   in_progress: {
@@ -512,6 +513,33 @@ export default function RequestDetail({
                         </button>
                       </CardContent>
                     </Card>
+                  </div>
+                );
+              }
+              if (getRequestFieldType(request, key) === "link") {
+                const formattedValue = formatRequestValue(value);
+                const href = getSafeLinkHref(value);
+                return (
+                  <div key={key} className="w-full md:w-1/2 px-2">
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">
+                        {label}
+                      </div>
+                      {href ? (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:text-blue-700 hover:underline break-all"
+                        >
+                          {formattedValue}
+                        </a>
+                      ) : (
+                        <div className="text-sm text-slate-700">
+                          {formattedValue}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               }

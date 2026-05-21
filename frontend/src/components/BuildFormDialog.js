@@ -15,6 +15,7 @@ import { X, Plus, Trash2, Building, GripVertical } from "lucide-react";
 
 const FIELD_TYPES = [
   { value: "text", label: "Text" },
+  { value: "link", label: "Link" },
   { value: "textarea", label: "Text area" },
   { value: "number", label: "Number" },
   { value: "date", label: "Date" },

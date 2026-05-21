@@ -11,6 +11,7 @@ requests_router = APIRouter(prefix="/requests", tags=["requests"])
 
 REQUEST_LIST_PROJECTION = {
     "_id": 0,
+    "form_fields": 0,
     "form_data": 0,
     "notes": 0,
     "requester_email": 0,
@@ -245,6 +246,7 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
         "request_number": request_number,
         "form_template_id": req.form_template_id,
         "form_template_name": tmpl["name"],
+        "form_fields": tmpl.get("fields", []),
         "department_id": tmpl["department_id"],
         "requester_id": user["id"],
         "requester_name": user["name"],
