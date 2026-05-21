@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import Optional
 from utils.helpers import db, require_admin, get_current_user
 from utils.cache import invalidate_metadata_cache, metadata_cache
+from utils.realtime_events import metadata_changed_payload
+from realtime import manager
 import uuid
 from datetime import datetime, timezone
 
@@ -55,6 +57,10 @@ async def create_department(req: DepartmentCreate, admin=Depends(require_admin))
     }
     await db.departments.insert_one(dept)
     invalidate_metadata_cache()
+    await manager.broadcast(
+        event="ADMIN_METADATA_CHANGED",
+        payload=metadata_changed_payload("departments", "created", item_id=dept["id"]),
+    )
     return {k: v for k, v in dept.items() if k != "_id"}
 
 
@@ -76,6 +82,10 @@ async def update_department(dept_id: str, req: DepartmentUpdate, admin=Depends(r
         raise HTTPException(status_code=404, detail="Department not found")
     invalidate_metadata_cache()
     dept = await db.departments.find_one({"id": dept_id}, {"_id": 0})
+    await manager.broadcast(
+        event="ADMIN_METADATA_CHANGED",
+        payload=metadata_changed_payload("departments", "updated", item_id=dept["id"]),
+    )
     return dept
 
 
@@ -103,5 +113,9 @@ async def delete_department(dept_id: str, admin=Depends(require_admin)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Department not found")
     invalidate_metadata_cache()
+    await manager.broadcast(
+        event="ADMIN_METADATA_CHANGED",
+        payload=metadata_changed_payload("departments", "deleted", item_id=dept_id),
+    )
 
     return {"message": "Department deleted"}

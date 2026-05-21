@@ -104,16 +104,18 @@ async def list_requests(
             }
             query = {"$and": [query, search_query]} if query else search_query
 
-    # Non-super-admin: restrict to user-related requests (their requests + any request they're in the approval chain)
+    # Non-super-admin: restrict to user-related requests. Managers can also
+    # inspect requests owned by their department.
     role = user.get("role", "")
     if role != "super_admin":
-        user_scope = {
-            "$or": [
-                {"requester_id": user["id"]},
-                {"approvals": {"$elemMatch": {"approver_id": user["id"]}}},
-                {"custodian.user_id": user["id"]},
-            ]
-        }
+        user_scope_options = [
+            {"requester_id": user["id"]},
+            {"approvals": {"$elemMatch": {"approver_id": user["id"]}}},
+            {"custodian.user_id": user["id"]},
+        ]
+        if role == "manager" and user.get("department_id"):
+            user_scope_options.append({"department_id": user["department_id"]})
+        user_scope = {"$or": user_scope_options}
         query = {"$and": [query, user_scope]} if query else user_scope
 
     total = await db.requests.count_documents(query)
@@ -128,13 +130,19 @@ async def get_request(request_id: str, user=Depends(get_current_user)):
     req = await db.requests.find_one({"id": request_id}, {"_id": 0})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    # Non-super-admin can only view requests they created or are in the approval chain
+    # Non-super-admin can only view requests they created, are assigned to, or
+    # manage by department.
     if user.get("role") != "super_admin":
         uid = user["id"]
         is_requester = req.get("requester_id") == uid
         is_approver = any(a.get("approver_id") == uid for a in req.get("approvals", []))
         is_custodian = req.get("custodian", {}).get("user_id") == uid
-        if not is_requester and not is_approver and not is_custodian:
+        is_department_manager = (
+            user.get("role") == "manager"
+            and user.get("department_id")
+            and req.get("department_id") == user.get("department_id")
+        )
+        if not is_requester and not is_approver and not is_custodian and not is_department_manager:
             raise HTTPException(status_code=403, detail="You do not have access to this request")
     # Populate requester_department_id for older requests that don't have it
     if "requester_department_id" not in req and req.get("requester_id"):

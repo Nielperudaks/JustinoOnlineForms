@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import Optional, List
 from utils.helpers import db, hash_password, require_admin, require_form_manager, get_current_user
 from utils.cache import invalidate_metadata_cache, invalidate_stats_cache, metadata_cache
+from utils.realtime_events import metadata_changed_payload
+from realtime import manager
 import uuid
 from datetime import datetime, timezone
 
@@ -90,6 +92,15 @@ async def create_user(req: UserCreate, admin=Depends(require_admin)):
     await db.users.insert_one(user)
     invalidate_metadata_cache()
     invalidate_stats_cache()
+    await manager.broadcast(
+        event="ADMIN_METADATA_CHANGED",
+        payload=metadata_changed_payload(
+            "users",
+            "created",
+            item_id=user["id"],
+            department_id=user["department_id"],
+        ),
+    )
     return {k: v for k, v in user.items() if k not in ("_id", "password_hash")}
 
 
@@ -119,16 +130,37 @@ async def update_user(user_id: str, req: UserUpdate, admin=Depends(require_admin
     invalidate_metadata_cache()
     invalidate_stats_cache()
     user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    await manager.broadcast(
+        event="ADMIN_METADATA_CHANGED",
+        payload=metadata_changed_payload(
+            "users",
+            "updated",
+            item_id=user["id"],
+            department_id=user.get("department_id"),
+        ),
+    )
     return user
 
 
 @users_router.delete("/{user_id}")
 async def delete_user(user_id: str, admin=Depends(require_admin)):
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     result = await db.users.delete_one({"id": user_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     invalidate_metadata_cache()
     invalidate_stats_cache()
+    await manager.broadcast(
+        event="ADMIN_METADATA_CHANGED",
+        payload=metadata_changed_payload(
+            "users",
+            "deleted",
+            item_id=user_id,
+            department_id=user.get("department_id"),
+        ),
+    )
     return {"message": "User deleted"}
 
 

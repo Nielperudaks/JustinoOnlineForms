@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import Optional, List
 from utils.helpers import db, require_form_manager, get_current_user
 from utils.cache import invalidate_metadata_cache, invalidate_stats_cache, metadata_cache
+from utils.realtime_events import metadata_changed_payload
+from realtime import manager
 import uuid
 from datetime import datetime, timezone
 
@@ -194,6 +196,15 @@ async def create_template(req: TemplateCreate, current=Depends(require_form_mana
     await db.form_templates.insert_one(tmpl)
     invalidate_metadata_cache()
     invalidate_stats_cache()
+    await manager.broadcast(
+        event="ADMIN_METADATA_CHANGED",
+        payload=metadata_changed_payload(
+            "templates",
+            "created",
+            item_id=tmpl["id"],
+            department_id=tmpl["department_id"],
+        ),
+    )
     return {k: v for k, v in tmpl.items() if k != "_id"}
 
 
@@ -228,6 +239,15 @@ async def update_template(template_id: str, req: TemplateUpdate, current=Depends
     invalidate_metadata_cache()
     invalidate_stats_cache()
     tmpl = await db.form_templates.find_one({"id": template_id}, {"_id": 0})
+    await manager.broadcast(
+        event="ADMIN_METADATA_CHANGED",
+        payload=metadata_changed_payload(
+            "templates",
+            "updated",
+            item_id=tmpl["id"],
+            department_id=tmpl.get("department_id"),
+        ),
+    )
     return tmpl
 
 
@@ -239,7 +259,7 @@ async def delete_template(template_id: str, current=Depends(require_form_manager
     A template can only be deleted if there are no pending/active requests
     that still reference it. This keeps approval flows and history consistent.
     """
-    await ensure_manager_can_access_template(current, template_id)
+    tmpl = await ensure_manager_can_access_template(current, template_id)
 
     # Block deletion if there are pending/active requests using this template
     active_count = await db.requests.count_documents(
@@ -259,4 +279,13 @@ async def delete_template(template_id: str, current=Depends(require_form_manager
         raise HTTPException(status_code=404, detail="Template not found")
     invalidate_metadata_cache()
     invalidate_stats_cache()
+    await manager.broadcast(
+        event="ADMIN_METADATA_CHANGED",
+        payload=metadata_changed_payload(
+            "templates",
+            "deleted",
+            item_id=template_id,
+            department_id=tmpl.get("department_id"),
+        ),
+    )
     return {"message": "Template deleted"}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
+import { useLiveUpdates } from "@/hooks/useLiveUpdates";
 import { useReactiveRefresh } from "@/hooks/useReactiveRefresh";
 import {
   listUsers,
@@ -27,6 +28,7 @@ import {
   removeById,
   upsertById,
 } from "@/pages/adminState";
+import { shouldRefreshAdminData } from "@/pages/adminRealtime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -241,6 +243,7 @@ export default function AdminPage() {
   const [custodians, setCustodians] = useState([]);
   const [stats, setStats] = useState({});
   const latestRefreshId = useRef(0);
+  const refreshTimeoutRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState("");
   const isSuperAdmin = user?.role === "super_admin";
   const isManager = user?.role === "manager";
@@ -320,6 +323,16 @@ export default function AdminPage() {
     void fetchAll();
   }, [fetchAll]);
 
+  const scheduleRefreshAll = useCallback(() => {
+    if (refreshTimeoutRef.current) {
+      window.clearTimeout(refreshTimeoutRef.current);
+    }
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      refreshTimeoutRef.current = null;
+      refreshAll();
+    }, 400);
+  }, [refreshAll]);
+
   const applyUserToState = useCallback((savedUser) => {
     setUsers((prev) => {
       const next = upsertById(prev, savedUser);
@@ -375,10 +388,25 @@ export default function AdminPage() {
     fetchAll();
   }, [canManageSettings, isManager, navigate, fetchAll]);
 
+  useEffect(() => () => {
+    if (refreshTimeoutRef.current) {
+      window.clearTimeout(refreshTimeoutRef.current);
+    }
+  }, []);
+
+  useLiveUpdates({
+    enabled: canManageSettings,
+    onEvent: ({ event, payload }) => {
+      if (shouldRefreshAdminData({ event, payload, user })) {
+        scheduleRefreshAll();
+      }
+    },
+  });
+
   // Reactive updates: refetch when the user returns to this tab and poll
   // periodically so admin data also catches changes made elsewhere.
   useReactiveRefresh(fetchAll, {
-    intervalMs: 30000,
+    intervalMs: 300000,
     refetchOnFocus: true,
     enabled: canManageSettings,
   });
@@ -440,7 +468,6 @@ export default function AdminPage() {
         role: "requestor",
         department_id: "",
       });
-      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to save user");
     }
@@ -465,7 +492,6 @@ export default function AdminPage() {
       await deleteUser(uid);
       removeUserFromState(uid);
       toast.success("User deleted");
-      refreshAll();
     } catch (err) {
       toast.error("Failed to delete user");
     }
@@ -476,7 +502,6 @@ export default function AdminPage() {
       const { data: savedUser } = await updateUser(u.id, { is_active: !u.is_active });
       applyUserToState(savedUser);
       toast.success(u.is_active ? "User deactivated" : "User activated");
-      refreshAll();
     } catch (err) {
       toast.error("Failed to update user");
     }
@@ -517,7 +542,6 @@ export default function AdminPage() {
       const { data: savedTemplate } = await updateTemplate(templateId, { approver_chain: chain });
       applyTemplateToState(savedTemplate);
       toast.success("Approver assigned");
-      refreshAll();
     } catch (err) {
       toast.error("Failed to assign approver");
     }
@@ -532,7 +556,6 @@ export default function AdminPage() {
       const { data: savedTemplate } = await updateTemplate(templateId, { approver_chain: chain });
       applyTemplateToState(savedTemplate);
       toast.success("Approver removed");
-      refreshAll();
     } catch (err) {
       toast.error("Failed to remove approver");
     }
@@ -550,7 +573,6 @@ export default function AdminPage() {
       });
       applyTemplateToState(savedTemplate);
       toast.success("Custodian assigned");
-      refreshAll();
     } catch (err) {
       toast.error("Failed to assign custodian");
     }
@@ -561,7 +583,6 @@ export default function AdminPage() {
       const { data: savedTemplate } = await updateTemplate(templateId, { custodian: null });
       applyTemplateToState(savedTemplate);
       toast.success("Custodian removed");
-      refreshAll();
     } catch (err) {
       toast.error("Failed to remove custodian");
     }
@@ -587,7 +608,6 @@ export default function AdminPage() {
       }
       setShowBuildFormDialog(false);
       setEditingTemplate(null);
-      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to save form");
       throw err;
@@ -614,7 +634,6 @@ export default function AdminPage() {
       removeTemplateFromState(tmpl.id);
       toast.success("Form deleted");
       setExpandedTemplate((prev) => (prev === tmpl.id ? null : prev));
-      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to delete form");
     }
@@ -672,7 +691,6 @@ export default function AdminPage() {
       setDepartments((prev) => upsertById(prev, savedDepartment));
       toast.success("Department created");
       resetDepartmentForm();
-      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to create department");
     } finally {
@@ -712,7 +730,6 @@ export default function AdminPage() {
       await deleteDepartment(dept.id);
       setDepartments((prev) => removeById(prev, dept.id));
       toast.success("Department removed");
-      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to remove department");
     }
@@ -736,7 +753,6 @@ export default function AdminPage() {
       setDepartments((prev) => upsertById(prev, savedDepartment));
       toast.success("Department updated");
       cancelEditingDepartment();
-      refreshAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to update department");
     } finally {
