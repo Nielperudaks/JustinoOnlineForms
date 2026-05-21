@@ -26,10 +26,10 @@ Backend environment variables:
 | `METADATA_CACHE_TTL_SECONDS` | Optional: in-memory metadata cache TTL; default `60`, set `0` to disable |
 | `STATS_CACHE_TTL_SECONDS` | Optional: in-memory dashboard stats cache TTL; default `10`, set `0` to disable |
 | `GZIP_MINIMUM_SIZE` | Optional: minimum response bytes before gzip; default `1000` |
-| `SEED_ON_STARTUP` | Set to `false` on production Railway services after initial seeding |
-| `ENSURE_INDEXES_ON_STARTUP` | Optional: create/confirm Mongo indexes at boot; default `true` |
+| `SEED_ON_STARTUP` | Optional: seed initial sample data at boot. Defaults to `false` on Railway and `true` locally |
+| `ENSURE_INDEXES_ON_STARTUP` | Optional: create/confirm Mongo indexes at boot. Defaults to `false` on Railway and `true` locally |
 
-For Railway, set `SEED_ON_STARTUP=false` after your database has been seeded. The backend still ensures indexes by default, uses gzip for larger JSON responses, limits the Mongo pool size, and caches small metadata/stat responses briefly to reduce egress and repeated database work.
+For Railway, keep `SEED_ON_STARTUP=false` and `ENSURE_INDEXES_ON_STARTUP=false` unless you are intentionally running maintenance on a database with enough free disk. The backend uses gzip for larger JSON responses, limits the Mongo pool size, and caches small metadata/stat responses briefly to reduce egress and repeated database work.
 
 After deployment, note the **backend base URL** (e.g. `https://your-api.onrender.com`). Do **not** include `/api` — the frontend adds that.
 

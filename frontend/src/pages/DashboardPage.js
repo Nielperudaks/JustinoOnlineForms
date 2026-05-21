@@ -28,6 +28,7 @@ import { Plus, Bell, Settings, LogOut, Menu, X } from "lucide-react";
 
 const INITIAL_REQUEST_PAGE_SIZE = 12;
 const REQUESTS_LOAD_MORE_SIZE = 5;
+const EMPTY_REQUEST_DATE_FILTER = { preset: "all", from: "", to: "" };
 
 export default function DashboardPage() {
   const { user, logout } = useAuthStore();
@@ -49,6 +50,8 @@ export default function DashboardPage() {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestDetailLoading, setRequestDetailLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [requestDateFilter, setRequestDateFilter] = useState(EMPTY_REQUEST_DATE_FILTER);
+  const [requestFormFilter, setRequestFormFilter] = useState("");
   const linkedRequestId = searchParams.get("request");
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -129,6 +132,9 @@ export default function DashboardPage() {
       if (activeFilter === "rejected") params.status = "rejected";
       if (activeFilter === "cancelled") params.status = "cancelled";
       if (searchQuery) params.search = searchQuery;
+      if (requestFormFilter) params.form_template_id = requestFormFilter;
+      if (requestDateFilter.from) params.date_from = requestDateFilter.from;
+      if (requestDateFilter.to) params.date_to = requestDateFilter.to;
 
       const res = await listRequests(params);
       let nextLoadedCount = res.data.items.length;
@@ -154,7 +160,7 @@ export default function DashboardPage() {
         setLoading(false);
       }
     }
-  }, [user?.role, selectedDept, activeFilter, searchQuery]);
+  }, [user?.role, selectedDept, activeFilter, searchQuery, requestFormFilter, requestDateFilter]);
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -519,6 +525,11 @@ export default function DashboardPage() {
                 onSelect={handleSelectRequest}
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                templates={templates}
+                dateFilter={requestDateFilter}
+                onDateFilterChange={setRequestDateFilter}
+                formFilter={requestFormFilter}
+                onFormFilterChange={setRequestFormFilter}
                 loading={loading}
                 loadingMore={loadingMoreRequests}
                 hasMore={hasMoreRequests}
@@ -540,6 +551,11 @@ export default function DashboardPage() {
               onSelect={handleSelectRequest}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              templates={templates}
+              dateFilter={requestDateFilter}
+              onDateFilterChange={setRequestDateFilter}
+              formFilter={requestFormFilter}
+              onFormFilterChange={setRequestFormFilter}
               loading={loading}
               loadingMore={loadingMoreRequests}
               hasMore={hasMoreRequests}

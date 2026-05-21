@@ -160,6 +160,70 @@ function ApproverPicker({ assigned, approvers, onSelect, testId, placeholder }) 
   );
 }
 
+function CustodianPicker({ assigned, custodians, onSelect, testId, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const selectedCustodian = custodians.find((c) => c.id === assigned?.user_id);
+  const selectedLabel = selectedCustodian
+    ? `${selectedCustodian.name} (${selectedCustodian.email})`
+    : assigned?.user_name || "";
+
+  const handleSelect = (userId) => {
+    onSelect(userId);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-testid={testId}
+          className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-left text-xs text-slate-700 hover:border-amber-300 hover:bg-amber-50/40 focus:outline-none focus:ring-2 focus:ring-amber-100 transition-colors flex items-center justify-between gap-2"
+        >
+          <span className={selectedLabel ? "truncate" : "truncate text-slate-400"}>
+            {selectedLabel || placeholder}
+          </span>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[calc(100vw-2rem)] p-0 sm:w-[22rem]" align="start">
+        <Command>
+          <CommandInput placeholder="Search custodians by name or email..." />
+          <CommandList>
+            <CommandEmpty>No matching custodians found.</CommandEmpty>
+            <CommandGroup heading="Suggested custodians">
+              {custodians.map((custodian) => (
+                <CommandItem
+                  key={custodian.id}
+                  value={`${custodian.name} ${custodian.email}`}
+                  onSelect={() => handleSelect(custodian.id)}
+                  className="text-xs"
+                >
+                  <Check
+                    className={`w-3.5 h-3.5 ${
+                      assigned?.user_id === custodian.id
+                        ? "opacity-100"
+                        : "opacity-0"
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-700 truncate">
+                      {custodian.name}
+                    </div>
+                    <div className="text-[11px] text-slate-400 truncate">
+                      {custodian.email}
+                    </div>
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function AdminPage() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -289,10 +353,14 @@ export default function AdminPage() {
 
       if (editingUser) {
         const updates = {
+          email: userForm.email,
           name: userForm.name,
           role: userForm.role,
           department_id: userForm.department_id,
         };
+        if (userForm.password) {
+          updates.password = userForm.password;
+        }
         await updateUser(editingUser.id, updates);
         toast.success("User updated");
       } else {
@@ -774,28 +842,26 @@ export default function AdminPage() {
                             }))
                           }
                           className="text-sm h-9"
-                          disabled={!!editingUser}
                         />
                       </div>
-                      {!editingUser && (
-                        <div className="space-y-1">
-                          <Label className="text-xs text-slate-600">
-                            Password *
-                          </Label>
-                          <Input
-                            data-testid="user-password"
-                            type="password"
-                            value={userForm.password}
-                            onChange={(e) =>
-                              setUserForm((p) => ({
-                                ...p,
-                                password: e.target.value,
-                              }))
-                            }
-                            className="text-sm h-9"
-                          />
-                        </div>
-                      )}
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-600">
+                          {editingUser ? "New password" : "Password *"}
+                        </Label>
+                        <Input
+                          data-testid="user-password"
+                          type="password"
+                          value={userForm.password}
+                          onChange={(e) =>
+                            setUserForm((p) => ({
+                              ...p,
+                              password: e.target.value,
+                            }))
+                          }
+                          placeholder={editingUser ? "Leave blank to keep current password" : ""}
+                          className="text-sm h-9"
+                        />
+                      </div>
                       <div className="space-y-1">
                         <Label className="text-xs text-slate-600">Role *</Label>
                         <Select
@@ -995,6 +1061,9 @@ export default function AdminPage() {
                         const selectableApprovers = approvers.filter(
                           (a) => a.role !== "requestor" && a.is_active !== false,
                         );
+                        const selectableCustodians = custodians.filter(
+                          (a) => a.is_active !== false,
+                        );
                         return (
                           <div
                             key={tmpl.id}
@@ -1132,30 +1201,15 @@ export default function AdminPage() {
                                       C
                                     </div>
                                     <div className="flex-1">
-                                      <Select
-                                        value={custodian?.user_id || ""}
-                                        onValueChange={(v) =>
+                                      <CustodianPicker
+                                        assigned={custodian}
+                                        custodians={selectableCustodians}
+                                        placeholder="Custodian (optional)"
+                                        testId={`custodian-${tmpl.id}`}
+                                        onSelect={(v) =>
                                           handleAssignCustodian(tmpl.id, v)
                                         }
-                                      >
-                                        <SelectTrigger
-                                          data-testid={`custodian-${tmpl.id}`}
-                                          className="h-8 text-xs border-slate-200"
-                                        >
-                                          <SelectValue placeholder="Custodian (optional)" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {custodians
-                                            .map((a) => (
-                                              <SelectItem
-                                                key={a.id}
-                                                value={a.id}
-                                              >
-                                                {a.name} ({a.email})
-                                              </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                      </Select>
+                                      />
                                     </div>
                                     {custodian && (
                                       <button

@@ -36,8 +36,9 @@ class RequestCollection:
 
     def find(self, _query=None, projection=None):
         self.last_projection = projection
+        query = _query or {}
         projected = []
-        for item in self.items:
+        for item in [item for item in self.items if self._matches(item, query)]:
             if projection and all(value == 0 for value in projection.values()):
                 projected.append({key: value for key, value in item.items() if projection.get(key) != 0})
             else:
@@ -46,7 +47,7 @@ class RequestCollection:
 
     async def count_documents(self, query):
         self.count_calls.append(query)
-        return len(self.items)
+        return len([item for item in self.items if self._matches(item, query)])
 
     def aggregate(self, pipeline):
         self.aggregate_calls.append(pipeline)
@@ -62,6 +63,21 @@ class RequestCollection:
                 }
             ]
         )
+
+    def _matches(self, item, query):
+        for key, expected in query.items():
+            if key == "$and":
+                return all(self._matches(item, subquery) for subquery in expected)
+            actual = item.get(key)
+            if isinstance(expected, dict):
+                if "$gte" in expected and actual < expected["$gte"]:
+                    return False
+                if "$lte" in expected and actual > expected["$lte"]:
+                    return False
+                continue
+            if actual != expected:
+                return False
+        return True
 
 
 class CountCollection:
@@ -79,6 +95,7 @@ class FakeDb:
                 {
                     "id": "req-1",
                     "request_number": "REQ-00001",
+                    "form_template_id": "template-1",
                     "form_template_name": "Laptop Request",
                     "title": "Laptop Request",
                     "requester_id": "user-1",
@@ -94,6 +111,22 @@ class FakeDb:
                     "notes": "large internal note",
                     "approvals": [{"comments": "heavy history"}],
                     "custodian": {"comments": "heavy custodian history"},
+                }
+                ,
+                {
+                    "id": "req-2",
+                    "request_number": "REQ-00002",
+                    "form_template_id": "template-1",
+                    "form_template_name": "Laptop Request",
+                    "title": "Laptop Request",
+                    "requester_id": "user-1",
+                    "requester_name": "Ana",
+                    "department_id": "dept-1",
+                    "status": "approved",
+                    "current_approval_step": 1,
+                    "total_approval_steps": 2,
+                    "created_at": "2026-04-30T23:59:59.999999+00:00",
+                    "updated_at": "2026-04-30T23:59:59.999999+00:00",
                 }
             ]
         )
@@ -126,6 +159,29 @@ def test_request_list_omits_heavy_detail_fields(monkeypatch):
     assert "approvals" not in result["items"][0]
     assert "custodian" not in result["items"][0]
     assert db.requests.last_projection == requests.REQUEST_LIST_PROJECTION
+
+
+def test_request_list_filters_by_form_and_created_date(monkeypatch):
+    db = FakeDb()
+    monkeypatch.setattr(requests, "db", db)
+
+    result = run(
+        requests.list_requests(
+            form_template_id="template-1",
+            date_from="2026-05-01",
+            date_to="2026-05-21",
+            offset=0,
+            page=1,
+            limit=50,
+            user={"id": "admin", "role": "super_admin"},
+        )
+    )
+
+    query = db.requests.count_calls[0]
+    assert query["form_template_id"] == "template-1"
+    assert query["created_at"]["$gte"] == "2026-05-01T00:00:00+00:00"
+    assert query["created_at"]["$lte"] == "2026-05-21T23:59:59.999999+00:00"
+    assert [item["id"] for item in result["items"]] == ["req-1"]
 
 
 def test_dashboard_stats_uses_single_request_aggregation(monkeypatch):

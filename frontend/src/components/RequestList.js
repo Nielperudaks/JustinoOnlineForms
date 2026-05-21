@@ -1,8 +1,23 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, FileText, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Search,
+  FileText,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  CalendarDays,
+  Files,
+  X,
+} from "lucide-react";
 import { differenceInHours, formatDistanceToNow } from "date-fns";
 
 const STATUS_CONFIG = {
@@ -39,11 +54,81 @@ function getRequestAgeIndicator(request) {
   return null;
 }
 
+const EMPTY_DATE_FILTER = { preset: "all", from: "", to: "" };
+
+function toDateInputValue(date) {
+  const timezoneOffset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 10);
+}
+
+function getPresetRange(preset) {
+  const today = new Date();
+  const from = new Date(today);
+
+  if (preset === "today") {
+    return {
+      preset,
+      from: toDateInputValue(today),
+      to: toDateInputValue(today),
+    };
+  }
+
+  if (preset === "last7") {
+    from.setDate(today.getDate() - 6);
+    return {
+      preset,
+      from: toDateInputValue(from),
+      to: toDateInputValue(today),
+    };
+  }
+
+  if (preset === "last30") {
+    from.setDate(today.getDate() - 29);
+    return {
+      preset,
+      from: toDateInputValue(from),
+      to: toDateInputValue(today),
+    };
+  }
+
+  return EMPTY_DATE_FILTER;
+}
+
+function getDateFilterLabel(dateFilter) {
+  if (!dateFilter?.from && !dateFilter?.to) return "Any date";
+  if (dateFilter.preset === "today") return "Today";
+  if (dateFilter.preset === "last7") return "Last 7 days";
+  if (dateFilter.preset === "last30") return "Last 30 days";
+  if (dateFilter.from && dateFilter.to) return `${dateFilter.from} to ${dateFilter.to}`;
+  if (dateFilter.from) return `From ${dateFilter.from}`;
+  return `Until ${dateFilter.to}`;
+}
+
 export default function RequestList({
-  requests, selectedRequest, onSelect, searchQuery, onSearchChange, loading, loadingMore = false, hasMore = false, onLoadMore
+  requests,
+  selectedRequest,
+  onSelect,
+  searchQuery,
+  onSearchChange,
+  loading,
+  loadingMore = false,
+  hasMore = false,
+  onLoadMore,
+  templates = [],
+  dateFilter = EMPTY_DATE_FILTER,
+  onDateFilterChange,
+  formFilter = "",
+  onFormFilterChange,
 }) {
   const scrollAreaRef = useRef(null);
   const showInitialLoading = loading && requests.length === 0;
+  const dateFilterActive = Boolean(dateFilter?.from || dateFilter?.to);
+  const formFilterActive = Boolean(formFilter);
+  const selectedTemplate = templates.find((template) => template.id === formFilter);
+  const formOptions = useMemo(
+    () => templates.filter((template) => template.is_active !== false),
+    [templates],
+  );
 
   const loadMoreRequests = useCallback(() => {
     if (loading || loadingMore || !hasMore || !onLoadMore) {
@@ -80,15 +165,168 @@ export default function RequestList({
     <div className="h-full flex flex-col min-h-0 min-w-0" data-testid="request-list">
       {/* Search bar */}
       <div className="p-3 border-b border-slate-200">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            data-testid="search-requests"
-            placeholder="Search requests..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 h-9 text-sm max-[390px]:text-[13px] bg-white border-slate-200"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              data-testid="search-requests"
+              placeholder="Search requests..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="pl-9 h-9 text-sm max-[390px]:text-[13px] bg-white border-slate-200"
+            />
+          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-testid="date-filter-trigger"
+                title={getDateFilterLabel(dateFilter)}
+                className={`relative h-9 w-9 rounded-md border flex items-center justify-center transition-colors ${
+                  dateFilterActive
+                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                    : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                <CalendarDays className="w-4 h-4" />
+                {dateFilterActive && (
+                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 p-3">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">Date filter</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {getDateFilterLabel(dateFilter)}
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    ["today", "Today"],
+                    ["last7", "7 days"],
+                    ["last30", "30 days"],
+                  ].map(([preset, label]) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => onDateFilterChange?.(getPresetRange(preset))}
+                      className={`h-8 rounded-md border text-xs transition-colors ${
+                        dateFilter?.preset === preset
+                          ? "border-blue-200 bg-blue-50 text-blue-700"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid gap-2">
+                  <div className="space-y-1 w-[150px]">
+                    <label className="text-[11px] text-slate-500" htmlFor="request-date-from">
+                      From
+                    </label>
+                    <Input
+                      id="request-date-from"
+                      data-testid="date-filter-from"
+                      type="date"
+                      value={dateFilter?.from || ""}
+                      onChange={(e) =>
+                        onDateFilterChange?.({
+                          ...dateFilter,
+                          preset: "custom",
+                          from: e.target.value,
+                        })
+                      }
+                      className="h-8 text-xs "
+                    />
+                  </div>
+                  <div className="space-y-1 w-[150px]">
+                    <label className="text-[11px] text-slate-500" htmlFor="request-date-to">
+                      To
+                    </label>
+                    <Input
+                      id="request-date-to"
+                      data-testid="date-filter-to"
+                      type="date"
+                      value={dateFilter?.to || ""}
+                      onChange={(e) =>
+                        onDateFilterChange?.({
+                          ...dateFilter,
+                          preset: "custom",
+                          to: e.target.value,
+                        })
+                      }
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onDateFilterChange?.(EMPTY_DATE_FILTER)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-slate-500 hover:bg-slate-100"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Clear date
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
+          {/* <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-testid="form-filter-trigger"
+                title={selectedTemplate?.name || "Any form"}
+                className={`relative h-9 w-9 rounded-md border flex items-center justify-center transition-colors ${
+                  formFilterActive
+                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                    : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                <Files className="w-4 h-4" />
+                {formFilterActive && (
+                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 p-2">
+              <div className="px-1.5 pb-2 pt-1">
+                <p className="text-xs font-semibold text-slate-700">Form filter</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                  {selectedTemplate?.name || "Any form"}
+                </p>
+              </div>
+              <div className="max-h-64 overflow-y-auto pr-1">
+                <button
+                  type="button"
+                  onClick={() => onFormFilterChange?.("")}
+                  className={`w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
+                    !formFilter
+                      ? "bg-blue-50 text-blue-700"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  All forms
+                </button>
+                {formOptions.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => onFormFilterChange?.(template.id)}
+                    className={`mt-1 w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
+                      formFilter === template.id
+                        ? "bg-blue-50 text-blue-700"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="block truncate">{template.name}</span>
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover> */}
         </div>
         <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-slate-100">
           <div

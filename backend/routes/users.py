@@ -18,6 +18,8 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    email: Optional[str] = None
+    password: Optional[str] = None
     name: Optional[str] = None
     role: Optional[str] = None
     department_id: Optional[str] = None
@@ -96,6 +98,20 @@ async def update_user(user_id: str, req: UserUpdate, admin=Depends(require_admin
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    if "email" in updates:
+        email = updates["email"].lower()
+        existing = await db.users.find_one({"email": email}, {"_id": 0})
+        if existing and existing.get("id") != user_id:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        updates["email"] = email
+
+    if "password" in updates:
+        password = updates.pop("password")
+        if not password:
+            raise HTTPException(status_code=400, detail="Password cannot be empty")
+        updates["password_hash"] = hash_password(password)
+
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     result = await db.users.update_one({"id": user_id}, {"$set": updates})
     if result.matched_count == 0:

@@ -6,6 +6,7 @@ import os
 import logging
 from pathlib import Path
 from fastapi import WebSocket
+from pymongo.errors import OperationFailure
 from realtime import manager
 from utils.helpers import db, _client as client, get_int_env
 
@@ -66,6 +67,20 @@ def get_bool_env(name: str, default: bool) -> bool:
     return value.lower() in ("1", "true", "yes", "on")
 
 
+def is_railway_environment() -> bool:
+    return bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"))
+
+
+def should_run_startup_task(name: str, local_default: bool = True) -> bool:
+    # Railway production databases can be small; avoid startup writes unless explicitly enabled.
+    default = False if is_railway_environment() else local_default
+    return get_bool_env(name, default)
+
+
+def is_low_disk_operation_failure(exc: OperationFailure) -> bool:
+    return exc.details.get("code") == 14031 or exc.details.get("codeName") == "OutOfDiskSpace"
+
+
 async def ensure_indexes():
     await db.users.create_index("id", unique=True)
     await db.users.create_index("email", unique=True)
@@ -86,13 +101,28 @@ async def ensure_indexes():
 
 @app.on_event("startup")
 async def startup_event():
-    if get_bool_env("ENSURE_INDEXES_ON_STARTUP", True):
-        await ensure_indexes()
-    if get_bool_env("SEED_ON_STARTUP", True):
-        from seed import seed_data
-        await seed_data(db)
+    if should_run_startup_task("ENSURE_INDEXES_ON_STARTUP"):
+        try:
+            await ensure_indexes()
+        except OperationFailure as exc:
+            if is_low_disk_operation_failure(exc):
+                logger.error("Startup index creation skipped because MongoDB is low on disk: %s", exc)
+            else:
+                raise
     else:
-        logger.info("Startup seed skipped: SEED_ON_STARTUP is false")
+        logger.info("Startup index creation skipped")
+
+    if should_run_startup_task("SEED_ON_STARTUP"):
+        try:
+            from seed import seed_data
+            await seed_data(db)
+        except OperationFailure as exc:
+            if is_low_disk_operation_failure(exc):
+                logger.error("Startup seed skipped because MongoDB is low on disk: %s", exc)
+            else:
+                raise
+    else:
+        logger.info("Startup seed skipped")
     await manager.startup()
 
 @app.on_event("shutdown")

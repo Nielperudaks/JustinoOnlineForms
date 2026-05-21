@@ -4,7 +4,7 @@ from typing import Optional, List
 from utils.helpers import db, get_current_user, render_request_email, send_email_notification
 from utils.cache import invalidate_stats_cache
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from realtime import manager
 
 requests_router = APIRouter(prefix="/requests", tags=["requests"])
@@ -36,6 +36,9 @@ class RequestAction(BaseModel):
 async def list_requests(
     status: Optional[str] = None,
     department_id: Optional[str] = None,
+    form_template_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     my_requests: Optional[bool] = False,
     my_approvals: Optional[bool] = False,
     search: Optional[str] = None,
@@ -52,6 +55,23 @@ async def list_requests(
             query["status"] = status
     if department_id:
         query["department_id"] = department_id
+    if form_template_id:
+        query["form_template_id"] = form_template_id
+    created_at_filter = {}
+    if date_from:
+        try:
+            start_date = datetime.fromisoformat(date_from).date()
+            created_at_filter["$gte"] = datetime.combine(start_date, time.min, tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date_from")
+    if date_to:
+        try:
+            end_date = datetime.fromisoformat(date_to).date()
+            created_at_filter["$lte"] = datetime.combine(end_date, time.max, tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date_to")
+    if created_at_filter:
+        query["created_at"] = created_at_filter
     if my_requests:
         query["requester_id"] = user["id"]
     if my_approvals:
