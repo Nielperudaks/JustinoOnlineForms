@@ -136,7 +136,7 @@ async def get_request(request_id: str, user=Depends(get_current_user)):
         uid = user["id"]
         is_requester = req.get("requester_id") == uid
         is_approver = any(a.get("approver_id") == uid for a in req.get("approvals", []))
-        is_custodian = req.get("custodian", {}).get("user_id") == uid
+        is_custodian = (req.get("custodian") or {}).get("user_id") == uid
         is_department_manager = (
             user.get("role") == "manager"
             and user.get("department_id")
