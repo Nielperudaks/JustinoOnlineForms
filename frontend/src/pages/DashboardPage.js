@@ -22,9 +22,16 @@ import Sidebar from "@/components/Sidebar";
 import RequestList from "@/components/RequestList";
 import RequestDetail from "@/components/RequestDetail";
 import CreateRequestDialog from "@/components/CreateRequestDialog";
+import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import NotificationPanel from "@/components/NotificationPanel";
 import { Button } from "@/components/ui/button";
-import { Plus, Bell, Settings, LogOut, Menu, X } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { getSettingsMenuItems } from "@/components/settingsMenu";
+import { Plus, Bell, Settings, LogOut, Menu, KeyRound, ClipboardList } from "lucide-react";
 
 const INITIAL_REQUEST_PAGE_SIZE = 12;
 const REQUESTS_LOAD_MORE_SIZE = 5;
@@ -55,6 +62,8 @@ export default function DashboardPage() {
   const linkedRequestId = searchParams.get("request");
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -128,7 +137,9 @@ export default function DashboardPage() {
       if (activeFilter === "my_requests") params.my_requests = true;
       if (activeFilter === "my_approvals") params.my_approvals = true;
       if (activeFilter === "pending") params.status = "pending";
+      if (activeFilter === "custodian_pending") params.custodian_status = "pending";
       if (activeFilter === "approved") params.status = "approved";
+      if (activeFilter === "custodian_fulfilled") params.custodian_status = "fulfilled";
       if (activeFilter === "rejected") params.status = "rejected";
       if (activeFilter === "cancelled") params.status = "cancelled";
       if (searchQuery) params.search = searchQuery;
@@ -356,6 +367,21 @@ export default function DashboardPage() {
     navigate("/login");
   };
 
+  const settingsItems = getSettingsMenuItems(user?.role);
+
+  const handleSettingsAction = (key) => {
+    setShowSettingsMenu(false);
+
+    if (key === "change_password") {
+      setShowChangePasswordDialog(true);
+      return;
+    }
+
+    if (key === "admin_panel" || key === "manage_forms") {
+      navigate("/admin");
+    }
+  };
+
   const handleLoadMoreRequests = useCallback(() => {
     if (loading || loadingMoreRequests || !hasMoreRequests) {
       return;
@@ -431,8 +457,12 @@ export default function DashboardPage() {
                   ? "My Requests"
                   : activeFilter === "my_approvals"
                     ? "Pending My Approval"
-                    : activeFilter.charAt(0).toUpperCase() +
-                      activeFilter.slice(1)}
+                    : activeFilter === "custodian_pending"
+                      ? "Pending Fulfillment"
+                      : activeFilter === "custodian_fulfilled"
+                        ? "Fulfilled Requests"
+                        : activeFilter.charAt(0).toUpperCase() +
+                          activeFilter.slice(1)}
               <span className="ml-2 text-xs text-slate-400 font-normal">
                 ({totalRequests})
               </span>
@@ -480,15 +510,44 @@ export default function DashboardPage() {
                 />
               )}
             </div>
-            {(user?.role === "super_admin" || user?.role === "manager") && (
+            {user?.role === "super_admin" ? (
               <button
                 data-testid="admin-button"
-                onClick={() => navigate("/admin")}
+                onClick={() => handleSettingsAction("admin_panel")}
                 className="p-2 hover:bg-slate-100 rounded-md transition-colors"
-                title={user?.role === "manager" ? "Manager Settings" : "Admin Panel"}
+                title="Admin Panel"
               >
                 <Settings className="w-4.5 h-4.5 text-slate-500" />
               </button>
+            ) : (
+              <Popover open={showSettingsMenu} onOpenChange={setShowSettingsMenu}>
+                <PopoverTrigger asChild>
+                  <button
+                    data-testid="settings-button"
+                    className="p-2 hover:bg-slate-100 rounded-md transition-colors"
+                    title="Settings"
+                  >
+                    <Settings className="w-4.5 h-4.5 text-slate-500" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-56 p-1.5">
+                  {settingsItems.map((item) => {
+                    const ItemIcon = item.key === "change_password" ? KeyRound : ClipboardList;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        data-testid={`settings-${item.key}`}
+                        onClick={() => handleSettingsAction(item.key)}
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+                      >
+                        <ItemIcon className="h-4 w-4 text-slate-500" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </PopoverContent>
+              </Popover>
             )}
             <button
               data-testid="logout-button"
@@ -592,6 +651,11 @@ export default function DashboardPage() {
           onClose={() => setShowCreateDialog(false)}
         />
       )}
+      <ChangePasswordDialog
+        user={user}
+        open={showChangePasswordDialog}
+        onOpenChange={setShowChangePasswordDialog}
+      />
     </div>
   );
 }

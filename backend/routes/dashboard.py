@@ -24,6 +24,7 @@ async def compute_dashboard_stats(user):
             "$or": [
                 {"requester_id": uid},
                 {"approvals": {"$elemMatch": {"approver_id": uid}}},
+                {"custodian.user_id": uid},
             ]
         }
         total_users = 0
@@ -36,10 +37,38 @@ async def compute_dashboard_stats(user):
                 "_id": None,
                 "total_requests": {"$sum": 1},
                 "pending_requests": {
-                    "$sum": {"$cond": [{"$in": ["$status", ["in_progress", "pending"]]}, 1, 0]}
+                    "$sum": {
+                        "$cond": [
+                            {
+                                "$and": [
+                                    {"$in": ["$status", ["in_progress", "pending"]]},
+                                    {"$ne": ["$custodian.status", "pending"]},
+                                ]
+                            },
+                            1,
+                            0,
+                        ]
+                    }
                 },
                 "approved_requests": {
-                    "$sum": {"$cond": [{"$eq": ["$status", "approved"]}, 1, 0]}
+                    "$sum": {
+                        "$cond": [
+                            {
+                                "$and": [
+                                    {"$eq": ["$status", "approved"]},
+                                    {"$ne": ["$custodian.status", "fulfilled"]},
+                                ]
+                            },
+                            1,
+                            0,
+                        ]
+                    }
+                },
+                "custodian_pending_requests": {
+                    "$sum": {"$cond": [{"$eq": ["$custodian.status", "pending"]}, 1, 0]}
+                },
+                "custodian_fulfilled_requests": {
+                    "$sum": {"$cond": [{"$eq": ["$custodian.status", "fulfilled"]}, 1, 0]}
                 },
                 "rejected_requests": {
                     "$sum": {"$cond": [{"$eq": ["$status", "rejected"]}, 1, 0]}
@@ -72,6 +101,8 @@ async def compute_dashboard_stats(user):
         "total_requests": request_stats.get("total_requests", 0),
         "pending_requests": request_stats.get("pending_requests", 0),
         "approved_requests": request_stats.get("approved_requests", 0),
+        "custodian_pending_requests": request_stats.get("custodian_pending_requests", 0),
+        "custodian_fulfilled_requests": request_stats.get("custodian_fulfilled_requests", 0),
         "rejected_requests": request_stats.get("rejected_requests", 0),
         "cancelled_requests": request_stats.get("cancelled_requests", 0),
         "my_pending_approvals": my_pending_approvals,

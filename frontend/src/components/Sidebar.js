@@ -15,8 +15,10 @@ const FILTER_ITEMS = [
   { key: "all", label: "All Requests", icon: LayoutDashboard },
   { key: "my_requests", label: "My Requests", icon: FileText },
   { key: "my_approvals", label: "Pending My Approval", icon: ClipboardCheck },
-  { key: "pending", label: "Pending", icon: Clock },
-  { key: "approved", label: "Approved", icon: CheckCircle2 },
+  { key: "pending", label: "In Progress", icon: Clock },
+  { key: "custodian_pending", label: "Pending My Fulfillment", icon: Clock },
+  { key: "approved", label: "Completed", icon: CheckCircle2 },
+  { key: "custodian_fulfilled", label: "Fulfilled", icon: CheckCircle2 },
   { key: "rejected", label: "Rejected", icon: XCircle },
   { key: "cancelled", label: "Cancelled", icon: XCircle },
 ];
@@ -81,15 +83,19 @@ export default function Sidebar({
                 ? stats?.my_pending_approvals
                 : item.key === "pending"
                   ? stats?.pending_requests
-                  : item.key === "approved"
-                    ? stats?.approved_requests
-                    : item.key === "rejected"
-                      ? stats?.rejected_requests
-                      : item.key === "cancelled"
-                        ? stats?.cancelled_requests
-                        : item.key === "all"
-                          ? stats?.total_requests
-                          : null;
+                  : item.key === "custodian_pending"
+                    ? stats?.custodian_pending_requests
+                    : item.key === "approved"
+                      ? stats?.approved_requests
+                      : item.key === "custodian_fulfilled"
+                        ? stats?.custodian_fulfilled_requests
+                        : item.key === "rejected"
+                          ? stats?.rejected_requests
+                          : item.key === "cancelled"
+                            ? stats?.cancelled_requests
+                            : item.key === "all"
+                              ? stats?.total_requests
+                              : null;
             return (
               <button
                 key={item.key}

@@ -16,7 +16,8 @@ REQUEST_LIST_PROJECTION = {
     "notes": 0,
     "requester_email": 0,
     "approvals": 0,
-    "custodian": 0,
+    "custodian.comments": 0,
+    "custodian.acted_at": 0,
 }
 
 
@@ -38,6 +39,7 @@ async def list_requests(
     status: Optional[str] = None,
     department_id: Optional[str] = None,
     form_template_id: Optional[str] = None,
+    custodian_status: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     my_requests: Optional[bool] = False,
@@ -52,12 +54,18 @@ async def list_requests(
     if status:
         if status == "pending":
             query["status"] = {"$in": ["in_progress", "pending"]}
+            query["custodian.status"] = {"$ne": "pending"}
+        elif status == "approved":
+            query["status"] = status
+            query["custodian.status"] = {"$ne": "fulfilled"}
         else:
             query["status"] = status
     if department_id:
         query["department_id"] = department_id
     if form_template_id:
         query["form_template_id"] = form_template_id
+    if custodian_status:
+        query["custodian.status"] = custodian_status
     created_at_filter = {}
     if date_from:
         try:

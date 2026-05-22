@@ -32,34 +32,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { differenceInHours, format } from "date-fns";
 import { getRequestFieldType, getSafeLinkHref } from "./requestDetailLinks";
-
-const STATUS_CONFIG = {
-  in_progress: {
-    label: "In Progress",
-    icon: Clock,
-    cls: "bg-blue-50 text-blue-700 border-blue-200",
-  },
-  pending: {
-    label: "Pending Fulfillment",
-    icon: Clock,
-    cls: "bg-amber-50 text-amber-700 border-amber-200",
-  },
-  approved: {
-    label: "Approved",
-    icon: CheckCircle2,
-    cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  },
-  rejected: {
-    label: "Rejected",
-    icon: XCircle,
-    cls: "bg-red-50 text-red-700 border-red-200",
-  },
-  cancelled: {
-    label: "Cancelled",
-    icon: XCircle,
-    cls: "bg-slate-100 text-slate-500 border-slate-300",
-  },
-};
+import { getRequestStatusConfig } from "./requestStatus";
 
 function getRequestAgeIndicator(request) {
   if (!["in_progress", "pending"].includes(request.status) || !request.created_at) {
@@ -281,7 +254,7 @@ export default function RequestDetail({
     );
   }
 
-  const statusCfg = STATUS_CONFIG[request.status] || STATUS_CONFIG.in_progress;
+  const statusCfg = getRequestStatusConfig(request);
   const StatusIcon = statusCfg.icon;
   const ageIndicator = getRequestAgeIndicator(request);
   const dept = departments?.find((d) => d.id === request.department_id);

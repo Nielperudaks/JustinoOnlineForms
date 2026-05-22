@@ -10,23 +10,13 @@ import {
 import {
   Search,
   FileText,
-  Clock,
-  CheckCircle2,
-  XCircle,
   AlertTriangle,
   CalendarDays,
   Files,
   X,
 } from "lucide-react";
 import { differenceInHours, formatDistanceToNow } from "date-fns";
-
-const STATUS_CONFIG = {
-  in_progress: { label: "In Progress", icon: Clock, cls: "bg-blue-50 text-blue-700 border-blue-200" },
-  pending: { label: "Pending Fulfillment", icon: Clock, cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  approved: { label: "Approved", icon: CheckCircle2, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  rejected: { label: "Rejected", icon: XCircle, cls: "bg-red-50 text-red-700 border-red-200" },
-  cancelled: { label: "Cancelled", icon: XCircle, cls: "bg-slate-100 text-slate-500 border-slate-300" },
-};
+import { getRequestStatusConfig } from "./requestStatus";
 
 function getRequestAgeIndicator(request) {
   if (!["in_progress", "pending"].includes(request.status) || !request.created_at) {
@@ -364,7 +354,7 @@ export default function RequestList({
         ) : (
           <div>
             {requests.map((req, idx) => {
-              const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG.in_progress;
+              const statusCfg = getRequestStatusConfig(req);
               const isActive = selectedRequest?.id === req.id;
               const ageIndicator = getRequestAgeIndicator(req);
               const timeAgo = req.created_at ? formatDistanceToNow(new Date(req.created_at), { addSuffix: true }) : "";
@@ -378,14 +368,14 @@ export default function RequestList({
                   style={{ animationDelay: `${idx * 30}ms` }}
                 >
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 max-w-[70%]">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-[10px] max-[390px]:text-[9px] text-slate-400">{req.request_number}</span>
                         {ageIndicator && (
                           <AlertTriangle className={`w-3 h-3 ${ageIndicator.iconClassName}`} />
                         )}
                       </div>
-                      <h4 className="text-sm max-[390px]:text-[13px] font-medium text-slate-800 truncate mt-0.5">
+                      <h4 className="text-sm max-[390px]:text-[13px]  font-medium text-slate-800 truncate mt-0.5">
                         {req.form_template_name || req.title}
                       </h4>
                     </div>

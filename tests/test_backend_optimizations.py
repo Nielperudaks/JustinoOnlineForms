@@ -58,6 +58,8 @@ class RequestCollection:
                     "total_requests": 3,
                     "pending_requests": 1,
                     "approved_requests": 1,
+                    "custodian_pending_requests": 1,
+                    "custodian_fulfilled_requests": 1,
                     "rejected_requests": 1,
                     "cancelled_requests": 0,
                 }
@@ -68,16 +70,28 @@ class RequestCollection:
         for key, expected in query.items():
             if key == "$and":
                 return all(self._matches(item, subquery) for subquery in expected)
-            actual = item.get(key)
+            actual = self._get_nested(item, key)
             if isinstance(expected, dict):
                 if "$gte" in expected and actual < expected["$gte"]:
                     return False
                 if "$lte" in expected and actual > expected["$lte"]:
                     return False
+                if "$in" in expected and actual not in expected["$in"]:
+                    return False
+                if "$ne" in expected and actual == expected["$ne"]:
+                    return False
                 continue
             if actual != expected:
                 return False
         return True
+
+    def _get_nested(self, item, dotted_key):
+        current = item
+        for part in dotted_key.split("."):
+            if not isinstance(current, dict):
+                return None
+            current = current.get(part)
+        return current
 
 
 class CountCollection:
@@ -111,7 +125,11 @@ class FakeDb:
                     "form_data": {"attachment": {"base64": "x" * 5000}},
                     "notes": "large internal note",
                     "approvals": [{"comments": "heavy history"}],
-                    "custodian": {"comments": "heavy custodian history"},
+                    "custodian": {
+                        "status": "pending",
+                        "user_name": "Carlo",
+                        "comments": "heavy custodian history",
+                    },
                 }
                 ,
                 {
@@ -124,6 +142,7 @@ class FakeDb:
                     "requester_name": "Ana",
                     "department_id": "dept-1",
                     "status": "approved",
+                    "custodian": {"status": "fulfilled", "user_name": "Carlo"},
                     "current_approval_step": 1,
                     "total_approval_steps": 2,
                     "created_at": "2026-04-30T23:59:59.999999+00:00",
@@ -159,8 +178,47 @@ def test_request_list_omits_heavy_detail_fields(monkeypatch):
     assert "notes" not in result["items"][0]
     assert "requester_email" not in result["items"][0]
     assert "approvals" not in result["items"][0]
-    assert "custodian" not in result["items"][0]
+    assert result["items"][0]["custodian"]["status"] == "pending"
     assert db.requests.last_projection == requests.REQUEST_LIST_PROJECTION
+
+
+def test_request_list_filters_by_custodian_status(monkeypatch):
+    db = FakeDb()
+    monkeypatch.setattr(requests, "db", db)
+
+    result = run(
+        requests.list_requests(
+            custodian_status="fulfilled",
+            offset=0,
+            page=1,
+            limit=50,
+            user={"id": "admin", "role": "super_admin"},
+        )
+    )
+
+    query = db.requests.count_calls[0]
+    assert query["custodian.status"] == "fulfilled"
+    assert [item["id"] for item in result["items"]] == ["req-2"]
+
+
+def test_approved_filter_excludes_fulfilled_custodian_requests(monkeypatch):
+    db = FakeDb()
+    monkeypatch.setattr(requests, "db", db)
+
+    result = run(
+        requests.list_requests(
+            status="approved",
+            offset=0,
+            page=1,
+            limit=50,
+            user={"id": "admin", "role": "super_admin"},
+        )
+    )
+
+    query = db.requests.count_calls[0]
+    assert query["status"] == "approved"
+    assert query["custodian.status"] == {"$ne": "fulfilled"}
+    assert result["items"] == []
 
 
 def test_request_list_filters_by_form_and_created_date(monkeypatch):
