@@ -577,7 +577,7 @@ export default function DashboardPage() {
               />
             </div>
           ) : (
-            <div className="h-full min-w-0 bg-white">
+            <div className="h-full min-w-0  bg-white">
               <RequestList
                 requests={requests}
                 selectedRequest={selectedRequest}
@@ -601,7 +601,7 @@ export default function DashboardPage() {
         {/* Desktop 2-panel: list + detail */}
         <div className="hidden lg:flex flex-1 overflow-hidden min-h-0">
           <div
-            className="border-r border-slate-200 bg-slate-50/50 flex-shrink-0 overflow-hidden flex flex-col min-w-0"
+            className="border-r border-slate-200 bg-slate-50/50 flex-shrink-0 overflow-hidden flex flex-col min-w-0 max-w-[500px]"
             style={{ width: listWidth, minWidth: minListWidth }}
           >
             <RequestList
