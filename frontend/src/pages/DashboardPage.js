@@ -307,9 +307,9 @@ export default function DashboardPage() {
     }
   };
 
-  const handleCancel = async (requestId) => {
+  const handleCancel = async (requestId, comments) => {
     try {
-      const res = await cancelRequest(requestId);
+      const res = await cancelRequest(requestId, { comments });
       toast.success("Request cancelled successfully");
       setSelectedRequest(res.data);
       fetchRequests();

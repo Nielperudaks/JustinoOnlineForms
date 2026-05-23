@@ -34,6 +34,10 @@ class RequestAction(BaseModel):
     comments: Optional[str] = ""
 
 
+class RequestCancel(BaseModel):
+    comments: str
+
+
 @requests_router.get("")
 async def list_requests(
     status: Optional[str] = None,
@@ -363,25 +367,48 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     return result
 
 @requests_router.post("/{request_id}/cancel")
-async def cancel_request(request_id: str, user=Depends(get_current_user)):
+async def cancel_request(request_id: str, cancellation: RequestCancel, user=Depends(get_current_user)):
     req = await db.requests.find_one({"id": request_id}, {"_id": 0})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
 
-    if req["status"] != "in_progress":
+    cancellation_reason = cancellation.comments.strip()
+    if not cancellation_reason:
+        raise HTTPException(status_code=400, detail="Cancellation reason is required")
+
+    if req["status"] in ("cancelled", "rejected", "approved"):
         raise HTTPException(status_code=400, detail=f"Request is already {req['status']}")
+
+    approvals = req.get("approvals", [])
+    if not approvals or all(a.get("status") == "approved" for a in approvals):
+        raise HTTPException(
+            status_code=400,
+            detail="Request can no longer be cancelled because all approvers have approved it",
+        )
 
     # Only the requester (or super admin) can cancel their own request
     if user["id"] != req["requester_id"] and user.get("role") != "super_admin":
         raise HTTPException(status_code=403, detail="You are not allowed to cancel this request")
 
     now = datetime.now(timezone.utc).isoformat()
+    request_display_name = req.get("form_template_name") or req.get("title") or "Request"
+
+    for approval in approvals:
+        if approval.get("status") in ("pending", "waiting"):
+            approval["status"] = "cancelled"
+            approval["comments"] = cancellation_reason
+            approval["acted_at"] = now
 
     await db.requests.update_one(
         {"id": request_id},
         {
             "$set": {
+                "approvals": approvals,
                 "status": "cancelled",
+                "cancellation_reason": cancellation_reason,
+                "cancelled_by": user["id"],
+                "cancelled_by_name": user.get("name", ""),
+                "cancelled_at": now,
                 "updated_at": now,
             }
         },
@@ -389,6 +416,51 @@ async def cancel_request(request_id: str, user=Depends(get_current_user)):
     invalidate_stats_cache()
 
     updated = await db.requests.find_one({"id": request_id}, {"_id": 0})
+
+    approver_ids = list({a.get("approver_id") for a in approvals if a.get("approver_id")})
+    approver_users = []
+    if approver_ids:
+        approver_users = await db.users.find(
+            {"id": {"$in": approver_ids}},
+            {"_id": 0},
+        ).to_list(len(approver_ids))
+
+    for approver_user in approver_users:
+        notif = {
+            "id": str(uuid.uuid4()),
+            "user_id": approver_user["id"],
+            "request_id": request_id,
+            "request_number": req["request_number"],
+            "message": f"Request '{request_display_name}' was cancelled by {user.get('name', 'the requester')}: {cancellation_reason}",
+            "type": "request_cancelled",
+            "is_read": False,
+            "created_at": now,
+        }
+        await db.notifications.insert_one(notif)
+        await send_email_notification(
+            approver_user.get("email", ""),
+            f"Request Cancelled: {req['request_number']}",
+            render_request_email(
+                heading="Request Cancelled",
+                request_id=request_id,
+                request_number=req["request_number"],
+                request_title=request_display_name,
+                intro="A request assigned to your approval chain has been cancelled.",
+                requester_name=req.get("requester_name", ""),
+                actor_name=user.get("name", ""),
+                status_label="Cancelled",
+                comments=cancellation_reason,
+                action_label="View request",
+            ),
+        )
+        await manager.broadcast(
+            event="NOTIFICATION_CREATED",
+            payload={
+                "user_id": notif["user_id"],
+                "notification_id": notif["id"],
+                "type": notif["type"],
+            },
+        )
 
     # Broadcast cancellation events so dashboards and detail views update live
     await manager.broadcast(

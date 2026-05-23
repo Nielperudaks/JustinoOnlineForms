@@ -17,7 +17,7 @@ export const STATUS_CONFIG = {
     cls: "bg-amber-50 text-amber-700 border-amber-200",
   },
   approved: {
-    label: "Completed",
+    label: "Fully Approved",
     icon: CheckCircle2,
     cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
   },

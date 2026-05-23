@@ -33,6 +33,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { differenceInHours, format } from "date-fns";
 import { getRequestFieldType, getSafeLinkHref } from "./requestDetailLinks";
 import { getRequestStatusConfig } from "./requestStatus";
+import {
+  canRequestBeCancelled,
+  getCancellationReasonError,
+} from "./requestCancellation";
 
 function getRequestAgeIndicator(request) {
   if (!["in_progress", "pending"].includes(request.status) || !request.created_at) {
@@ -228,6 +232,8 @@ export default function RequestDetail({
   isLoading = false,
 }) {
   const [comments, setComments] = useState("");
+  const [cancelComments, setCancelComments] = useState("");
+  const [cancelError, setCancelError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
 
@@ -273,9 +279,7 @@ export default function RequestDetail({
     request.custodian?.user_id === currentUser?.id &&
     request.custodian?.status === "pending";
 
-  const canCancel =
-    request.status === "in_progress" &&
-    currentUser?.id === request.requester_id;
+  const canCancel = canRequestBeCancelled(request, currentUser);
 
   const handleAction = async (action) => {
     setActionLoading(true);
@@ -289,6 +293,10 @@ export default function RequestDetail({
 
   const handleCancel = async () => {
     if (!onCancel) return;
+    const reasonError = getCancellationReasonError(cancelComments);
+    setCancelError(reasonError);
+    if (reasonError) return;
+
     // Simple confirm to avoid accidental cancellations
     // eslint-disable-next-line no-restricted-globals
     const confirmed = window.confirm(
@@ -298,7 +306,9 @@ export default function RequestDetail({
 
     setCancelLoading(true);
     try {
-      await onCancel(request.id);
+      await onCancel(request.id, cancelComments.trim());
+      setCancelComments("");
+      setCancelError("");
     } finally {
       setCancelLoading(false);
     }
@@ -642,15 +652,32 @@ export default function RequestDetail({
               Cancel this request
             </h4>
             <p className="text-xs text-slate-500 mb-3">
-              You can cancel this request while it is still in progress. Once
-              cancelled, approvers will no longer be able to approve or reject
-              it.
+              You can cancel this request until every approver has approved it.
+              The reason will be sent to the approvers.
             </p>
+            <Textarea
+              data-testid="cancel-comments"
+              placeholder="Reason for cancellation..."
+              value={cancelComments}
+              onChange={(e) => {
+                setCancelComments(e.target.value);
+                if (cancelError) {
+                  setCancelError(getCancellationReasonError(e.target.value));
+                }
+              }}
+              className="mb-2 bg-white text-sm"
+              rows={3}
+            />
+            {cancelError && (
+              <p className="text-xs text-red-600 mb-3" data-testid="cancel-error">
+                {cancelError}
+              </p>
+            )}
             <Button
               data-testid="cancel-request-button"
               variant="outline"
               className="border-slate-300 text-slate-700 hover:bg-slate-100"
-              disabled={cancelLoading}
+              disabled={cancelLoading || Boolean(getCancellationReasonError(cancelComments))}
               onClick={handleCancel}
             >
               <XCircle className="w-4 h-4 mr-2" />

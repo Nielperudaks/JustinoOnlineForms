@@ -1,3 +1,7 @@
+import {
+  canRequestBeCancelled,
+  getCancellationReasonError,
+} from "./requestCancellation";
 import { getRequestFieldType, getSafeLinkHref } from "./requestDetailLinks";
 
 describe("request detail link fields", () => {
@@ -19,5 +23,38 @@ describe("request detail link fields", () => {
     expect(getSafeLinkHref("https://example.com/path")).toBe("https://example.com/path");
     expect(getSafeLinkHref("mailto:support@example.com")).toBe("mailto:support@example.com");
     expect(getSafeLinkHref("javascript:alert(1)")).toBe("");
+  });
+});
+
+describe("request cancellation rules", () => {
+  test("allows requester cancellation while any approver has not approved", () => {
+    const request = {
+      status: "pending",
+      requester_id: "requester-1",
+      approvals: [
+        { status: "approved" },
+        { status: "pending" },
+      ],
+    };
+
+    expect(canRequestBeCancelled(request, { id: "requester-1" })).toBe(true);
+  });
+
+  test("blocks cancellation after all approvers have approved", () => {
+    const request = {
+      status: "pending",
+      requester_id: "requester-1",
+      approvals: [
+        { status: "approved" },
+        { status: "approved" },
+      ],
+    };
+
+    expect(canRequestBeCancelled(request, { id: "requester-1" })).toBe(false);
+  });
+
+  test("requires a cancellation reason", () => {
+    expect(getCancellationReasonError("  ")).toBe("Cancellation reason is required");
+    expect(getCancellationReasonError("No longer needed")).toBe("");
   });
 });
