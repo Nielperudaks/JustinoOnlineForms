@@ -4,6 +4,7 @@ from typing import Optional, List
 from utils.helpers import db, hash_password, require_admin, require_form_manager, get_current_user
 from utils.cache import invalidate_metadata_cache, invalidate_stats_cache, metadata_cache
 from utils.realtime_events import metadata_changed_payload
+from utils.roles import APPROVER_ROLES, FORM_MANAGER_ROLES, SUPER_ADMIN
 from realtime import manager
 import uuid
 from datetime import datetime, timezone
@@ -15,7 +16,7 @@ class UserCreate(BaseModel):
     email: str
     password: str
     name: str
-    role: str  # super_admin, requestor, approver, both
+    role: str
     department_id: str
 
 
@@ -57,7 +58,7 @@ async def list_users(
 
 async def _list_users_uncached(department_id, role, search, current):
     query = {}
-    if current.get("role") == "manager":
+    if current.get("role") in FORM_MANAGER_ROLES:
         query["department_id"] = current.get("department_id")
     elif department_id:
         query["department_id"] = department_id
@@ -175,8 +176,8 @@ async def list_approvers(department_id: Optional[str] = None, user=Depends(get_c
 
 
 async def _list_approvers_uncached(department_id, user):
-    query = {"role": {"$in": ["approver", "both", "manager", "super_admin"]}}
-    if user.get("role") == "manager":
+    query = {"role": {"$in": list(APPROVER_ROLES)}}
+    if user.get("role") in FORM_MANAGER_ROLES:
         query["department_id"] = user.get("department_id")
     elif department_id:
         query["department_id"] = department_id
@@ -196,7 +197,7 @@ async def list_custodians(department_id: Optional[str] = None, user=Depends(get_
 
 async def _list_custodians_uncached(department_id, user):
     query = {"is_active": True}
-    if user.get("role") == "manager":
+    if user.get("role") in FORM_MANAGER_ROLES:
         query["department_id"] = user.get("department_id")
     elif department_id:
         query["department_id"] = department_id
@@ -207,7 +208,7 @@ async def _list_custodians_uncached(department_id, user):
 @users_router.put("/{user_id}/password")
 async def change_password(user_id: str, req: PasswordChange, current=Depends(get_current_user)):
     from utils.helpers import verify_password
-    if current["id"] != user_id and current["role"] != "super_admin":
+    if current["id"] != user_id and current["role"] != SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="Not authorized")
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if not user:

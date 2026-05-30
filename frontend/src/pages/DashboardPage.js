@@ -31,6 +31,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { getSettingsMenuItems } from "@/components/settingsMenu";
+import { isRequestorRole, isApproverRole, isSuperAdminRole } from "@/lib/roles";
 import { Plus, Bell, Settings, LogOut, Menu, KeyRound, ClipboardList } from "lucide-react";
 
 const INITIAL_REQUEST_PAGE_SIZE = 12;
@@ -53,7 +54,7 @@ export default function DashboardPage() {
   const [selectedDept, setSelectedDept] = useState(null);
   const [activeFilter, setActiveFilter] = useState("all");
 
-  const canCreateRequest = user?.role === "requestor" || user?.role === "both" || user?.role === "manager" || user?.role === "super_admin";
+  const canCreateRequest = isRequestorRole(user?.role);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestDetailLoading, setRequestDetailLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -131,7 +132,7 @@ export default function DashboardPage() {
     try {
       const limit = offset === 0 ? INITIAL_REQUEST_PAGE_SIZE : REQUESTS_LOAD_MORE_SIZE;
       const params = { offset, limit };
-      const isSuperAdmin = user?.role === "super_admin";
+      const isSuperAdmin = isSuperAdminRole(user?.role);
       // Only super admin can filter by department
       if (isSuperAdmin && selectedDept) params.department_id = selectedDept;
       if (activeFilter === "my_requests") params.my_requests = true;
@@ -187,8 +188,8 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user?.role) return;
     const role = user.role;
-    const canUseMyRequests = role === "requestor" || role === "both" || role === "manager" || role === "super_admin";
-    const canUseMyApprovals = role === "approver" || role === "both" || role === "manager" || role === "super_admin";
+    const canUseMyRequests = isRequestorRole(role);
+    const canUseMyApprovals = isApproverRole(role);
     if (activeFilter === "my_requests" && !canUseMyRequests) setActiveFilter("all");
     if (activeFilter === "my_approvals" && !canUseMyApprovals) setActiveFilter("all");
   }, [user?.role, activeFilter]);
@@ -510,7 +511,7 @@ export default function DashboardPage() {
                 />
               )}
             </div>
-            {user?.role === "super_admin" ? (
+            {isSuperAdminRole(user?.role) ? (
               <button
                 data-testid="admin-button"
                 onClick={() => handleSettingsAction("admin_panel")}

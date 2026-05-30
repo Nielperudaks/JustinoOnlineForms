@@ -10,6 +10,7 @@ import {
   ChevronRight,
   X,
 } from "lucide-react";
+import { getRoleLabel, isRequestorRole, isApproverRole, isSuperAdminRole } from "@/lib/roles";
 
 const FILTER_ITEMS = [
   { key: "all", label: "All Requests", icon: LayoutDashboard },
@@ -24,11 +25,11 @@ const FILTER_ITEMS = [
 ];
 
 function canRequest(role) {
-  return role === "requestor" || role === "both" || role === "manager" || role === "super_admin";
+  return isRequestorRole(role);
 }
 
 function canApprove(role) {
-  return role === "approver" || role === "both" || role === "manager" || role === "super_admin";
+  return isApproverRole(role);
 }
 
 export default function Sidebar({
@@ -66,7 +67,7 @@ export default function Sidebar({
         <div className="text-slate-200 text-sm font-medium truncate">{user?.name}</div>
         <div className="text-slate-500 text-xs truncate">{user?.email}</div>
         <div className="mt-1.5 inline-flex px-2 py-0.5 bg-blue-600/20 text-blue-400 text-[10px] font-semibold uppercase tracking-wider rounded">
-          {user?.role?.replace("_", " ")}
+          {getRoleLabel(user?.role)}
         </div>
       </div>
 
@@ -116,7 +117,7 @@ export default function Sidebar({
         </div>
 
         {/* Departments - only visible to super admin */}
-        {user?.role === "super_admin" && (
+        {isSuperAdminRole(user?.role) && (
           <div className="p-3 pt-0">
             <div className="text-slate-500 text-[10px] uppercase tracking-widest font-semibold px-3 mb-2 mt-2">
               Departments

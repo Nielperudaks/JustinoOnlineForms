@@ -127,7 +127,7 @@ def run(coro):
 
 
 def manager():
-    return {"id": "manager-a", "role": "manager", "department_id": "dept-a"}
+    return {"id": "manager-a", "role": "manager_ops", "department_id": "dept-a"}
 
 
 def test_manager_lists_department_requests_without_heavy_details(monkeypatch):

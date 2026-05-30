@@ -37,7 +37,10 @@ describe("admin state helpers", () => {
   });
 
   test("keeps derived user pickers in sync with updated roles and status", () => {
-    expect(isApproverUser({ role: "manager" })).toBe(true);
+    expect(isApproverUser({ role: "manager_ops" })).toBe(true);
+    expect(isApproverUser({ role: "manager_sup" })).toBe(true);
+    expect(isApproverUser({ role: "executive_ops" })).toBe(true);
+    expect(isApproverUser({ role: "executive_sup" })).toBe(true);
     expect(isApproverUser({ role: "requestor" })).toBe(false);
     expect(isCustodianUser({ is_active: true })).toBe(true);
     expect(isCustodianUser({ is_active: false })).toBe(false);

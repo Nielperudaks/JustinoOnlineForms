@@ -129,7 +129,7 @@ def run(coro):
 
 
 def manager():
-    return {"id": "manager-a", "role": "manager", "department_id": "dept-a", "name": "Manager A"}
+    return {"id": "manager-a", "role": "manager_ops", "department_id": "dept-a", "name": "Manager A"}
 
 
 def super_admin():

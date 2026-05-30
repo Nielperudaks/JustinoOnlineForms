@@ -14,6 +14,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from pathlib import Path
 import hashlib
+from utils.roles import FORM_MANAGER_ROLES, SUPER_ADMIN
 
 ROOT_DIR = Path(__file__).parent.parent
 load_dotenv(ROOT_DIR / '.env')
@@ -170,13 +171,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 
 async def require_admin(user=Depends(get_current_user)):
-    if user["role"] != "super_admin":
+    if user["role"] != SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
 
 async def require_form_manager(user=Depends(get_current_user)):
-    if user["role"] not in ("super_admin", "manager"):
+    if user["role"] != SUPER_ADMIN and user["role"] not in FORM_MANAGER_ROLES:
         raise HTTPException(status_code=403, detail="Admin or manager access required")
     return user
 

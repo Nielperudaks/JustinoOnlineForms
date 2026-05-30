@@ -2,6 +2,14 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from utils.helpers import db, get_current_user, render_request_email, send_email_notification
+from utils.roles import (
+    APPROVER_ROLES,
+    FORM_MANAGER_ROLES,
+    MANAGER_ROLES,
+    SUPER_ADMIN,
+    executive_role_for_manager,
+    is_requestor_capable,
+)
 from utils.cache import invalidate_stats_cache
 import uuid
 from datetime import datetime, time, timezone
@@ -120,13 +128,13 @@ async def list_requests(
     # Non-super-admin: restrict to user-related requests. Managers can also
     # inspect requests owned by their department.
     role = user.get("role", "")
-    if role != "super_admin":
+    if role != SUPER_ADMIN:
         user_scope_options = [
             {"requester_id": user["id"]},
             {"approvals": {"$elemMatch": {"approver_id": user["id"]}}},
             {"custodian.user_id": user["id"]},
         ]
-        if role == "manager" and user.get("department_id"):
+        if role in FORM_MANAGER_ROLES and user.get("department_id"):
             user_scope_options.append({"department_id": user["department_id"]})
         user_scope = {"$or": user_scope_options}
         query = {"$and": [query, user_scope]} if query else user_scope
@@ -145,13 +153,13 @@ async def get_request(request_id: str, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Request not found")
     # Non-super-admin can only view requests they created, are assigned to, or
     # manage by department.
-    if user.get("role") != "super_admin":
+    if user.get("role") != SUPER_ADMIN:
         uid = user["id"]
         is_requester = req.get("requester_id") == uid
         is_approver = any(a.get("approver_id") == uid for a in req.get("approvals", []))
         is_custodian = (req.get("custodian") or {}).get("user_id") == uid
         is_department_manager = (
-            user.get("role") == "manager"
+            user.get("role") in FORM_MANAGER_ROLES
             and user.get("department_id")
             and req.get("department_id") == user.get("department_id")
         )
@@ -168,7 +176,7 @@ async def get_request(request_id: str, user=Depends(get_current_user)):
 @requests_router.post("", status_code=201)
 async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     role = user.get("role", "")
-    if role not in ("requestor", "both", "manager", "super_admin"):
+    if not is_requestor_capable(user):
         raise HTTPException(status_code=403, detail="Only requestors can create requests")
     tmpl = await db.form_templates.find_one({"id": req.form_template_id, "is_active": True}, {"_id": 0})
     if not tmpl:
@@ -194,14 +202,28 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
                     status_code=400,
                     detail="Requestor has no department assigned. Immediate Manager requires the requestor to have a department."
                 )
-            manager_user = await db.users.find_one(
-                {"role": "manager", "department_id": requester_dept_id, "is_active": True},
-                {"_id": 0}
-            )
+            executive_role = executive_role_for_manager(user)
+            if executive_role:
+                manager_query = {"role": executive_role, "is_active": True}
+                missing_detail = (
+                    f"No Immediate Manager ({executive_role.replace('_', ' ').title()}) found. "
+                    "Please assign the executive officer role."
+                )
+            else:
+                manager_query = {
+                    "role": {"$in": list(MANAGER_ROLES)},
+                    "department_id": requester_dept_id,
+                    "is_active": True,
+                }
+                missing_detail = (
+                    "No Immediate Manager found in requestor's department. "
+                    "Please assign Manager (OPS) or Manager (SUP) to the requestor's department."
+                )
+            manager_user = await db.users.find_one(manager_query, {"_id": 0})
             if not manager_user:
                 raise HTTPException(
                     status_code=400,
-                    detail="No Immediate Manager (Manager role) found in requestor's department. Please assign a Manager to the requestor's department."
+                    detail=missing_detail,
                 )
             approver_id = manager_user["id"]
             approver_name = manager_user.get("name", "Immediate Manager")
@@ -387,7 +409,7 @@ async def cancel_request(request_id: str, cancellation: RequestCancel, user=Depe
         )
 
     # Only the requester (or super admin) can cancel their own request
-    if user["id"] != req["requester_id"] and user.get("role") != "super_admin":
+    if user["id"] != req["requester_id"] and user.get("role") != SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="You are not allowed to cancel this request")
 
     now = datetime.now(timezone.utc).isoformat()
@@ -500,7 +522,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
     custodian = req.get("custodian")
     role = user.get("role", "")
 
-    if action.action in ("approve", "reject") and role not in ("approver", "both", "manager", "super_admin"):
+    if action.action in ("approve", "reject") and role not in APPROVER_ROLES:
         raise HTTPException(status_code=403, detail="Only approvers can approve or reject requests")
 
     if action.action == "fulfill":

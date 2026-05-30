@@ -63,7 +63,7 @@ export default function LoginPage() {
             Streamline approvals across all departments. Submit, track, and manage requests from anywhere.
           </p>
         </div>
-        <div className="relative z-10 flex gap-8 text-sm">
+        {/* <div className="relative z-10 flex gap-8 text-sm">
           <div>
             <div className="text-2xl font-bold text-white">10</div>
             <div className="text-slate-500">Departments</div>
@@ -76,7 +76,7 @@ export default function LoginPage() {
             <div className="text-2xl font-bold text-white">3-Step</div>
             <div className="text-slate-500">Approvals</div>
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Right panel - login form */}

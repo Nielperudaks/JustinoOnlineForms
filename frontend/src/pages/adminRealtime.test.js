@@ -11,12 +11,12 @@ describe("admin realtime invalidation", () => {
     ).toBe(true);
   });
 
-  test("refreshes manager only for their department metadata", () => {
+  test("refreshes manager roles only for their department metadata", () => {
     expect(
       shouldRefreshAdminData({
         event: "ADMIN_METADATA_CHANGED",
         payload: { resource: "templates", department_id: "dept-a" },
-        user: { role: "manager", department_id: "dept-a" },
+        user: { role: "manager_ops", department_id: "dept-a" },
       }),
     ).toBe(true);
 
@@ -24,7 +24,7 @@ describe("admin realtime invalidation", () => {
       shouldRefreshAdminData({
         event: "ADMIN_METADATA_CHANGED",
         payload: { resource: "templates", department_id: "dept-b" },
-        user: { role: "manager", department_id: "dept-a" },
+        user: { role: "manager_sup", department_id: "dept-a" },
       }),
     ).toBe(false);
   });

@@ -4,18 +4,14 @@ from typing import Optional, List
 from utils.helpers import db, require_form_manager, get_current_user
 from utils.cache import invalidate_metadata_cache, invalidate_stats_cache, metadata_cache
 from utils.realtime_events import metadata_changed_payload
+from utils.roles import APPROVER_ROLES, FORM_MANAGER_ROLES, SUPER_ADMIN, is_super_admin
 from realtime import manager
 import uuid
 from datetime import datetime, timezone
 
 templates_router = APIRouter(prefix="/form-templates", tags=["form-templates"])
 
-APPROVER_ROLES = {"approver", "both", "manager", "super_admin"}
 MAX_APPROVER_STEPS = 8
-
-
-def is_super_admin(user):
-    return user.get("role") == "super_admin"
 
 
 def manager_department_id(user):
@@ -25,7 +21,7 @@ def manager_department_id(user):
 def ensure_manager_can_access_department(user, department_id):
     if is_super_admin(user):
         return
-    if user.get("role") != "manager" or manager_department_id(user) != department_id:
+    if user.get("role") not in FORM_MANAGER_ROLES or manager_department_id(user) != department_id:
         raise HTTPException(status_code=403, detail="Managers can only manage forms in their department")
 
 

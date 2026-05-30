@@ -1,3 +1,5 @@
+import { isManagerRole, isSuperAdminRole } from "../lib/roles";
+
 export const ADMIN_METADATA_EVENT = "ADMIN_METADATA_CHANGED";
 
 export function shouldRefreshAdminData({ event, payload, user }) {
@@ -5,11 +7,11 @@ export function shouldRefreshAdminData({ event, payload, user }) {
     return false;
   }
 
-  if (user.role === "super_admin") {
+  if (isSuperAdminRole(user.role)) {
     return true;
   }
 
-  if (user.role !== "manager") {
+  if (!isManagerRole(user.role)) {
     return false;
   }
 

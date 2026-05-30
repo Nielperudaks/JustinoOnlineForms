@@ -30,6 +30,13 @@ import {
   upsertById,
 } from "@/pages/adminState";
 import { shouldRefreshAdminData } from "@/pages/adminRealtime";
+import {
+  getRoleLabel,
+  isApproverRole,
+  isManagerRole,
+  isSuperAdminRole,
+  ROLE_OPTIONS,
+} from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -262,8 +269,8 @@ export default function AdminPage() {
     });
   }, []);
   const [searchQuery, setSearchQuery] = useState("");
-  const isSuperAdmin = user?.role === "super_admin";
-  const isManager = user?.role === "manager";
+  const isSuperAdmin = isSuperAdminRole(user?.role);
+  const isManager = isManagerRole(user?.role);
   const canManageSettings = isSuperAdmin || isManager;
 
   // User form state
@@ -480,13 +487,13 @@ export default function AdminPage() {
 
   // User management
   const findDepartmentManagerConflict = ({ role, department_id, userId }) => {
-    if (role !== "manager" || !department_id) {
+    if (!isManagerRole(role) || !department_id) {
       return null;
     }
 
     return users.find(
       (u) =>
-        u.role === "manager" &&
+        isManagerRole(u.role) &&
         u.department_id === department_id &&
         u.id !== userId,
     );
@@ -855,6 +862,10 @@ export default function AdminPage() {
     approver: "bg-blue-50 text-blue-700 border-blue-200",
     both: "bg-emerald-50 text-emerald-700 border-emerald-200",
     manager: "bg-amber-50 text-amber-700 border-amber-200",
+    manager_ops: "bg-amber-50 text-amber-700 border-amber-200",
+    manager_sup: "bg-orange-50 text-orange-700 border-orange-200",
+    executive_ops: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    executive_sup: "bg-cyan-50 text-cyan-700 border-cyan-200",
   };
 
   return (
@@ -1039,13 +1050,11 @@ export default function AdminPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="requestor">Requestor</SelectItem>
-                            <SelectItem value="approver">Approver</SelectItem>
-                            <SelectItem value="both">Both</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="super_admin">
-                              Super Admin
-                            </SelectItem>
+                            {ROLE_OPTIONS.map((roleOption) => (
+                              <SelectItem key={roleOption.value} value={roleOption.value}>
+                                {roleOption.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1135,9 +1144,9 @@ export default function AdminPage() {
                           <td className="p-3 text-slate-500">{u.email}</td>
                           <td className="p-3">
                             <Badge
-                              className={`text-[10px] ${ROLE_COLORS[u.role] || ROLE_COLORS.requestor} border capitalize`}
+                              className={`text-[10px] ${ROLE_COLORS[u.role] || ROLE_COLORS.requestor} border`}
                             >
-                              {u.role?.replace("_", " ")}
+                              {getRoleLabel(u.role)}
                             </Badge>
                           </td>
                           <td className="p-3 text-slate-500">
@@ -1221,7 +1230,7 @@ export default function AdminPage() {
                         const chain = tmpl.approver_chain || [];
                         const custodian = tmpl.custodian;
                         const selectableApprovers = approvers.filter(
-                          (a) => a.role !== "requestor" && a.is_active !== false,
+                          (a) => isApproverRole(a.role) && a.is_active !== false,
                         );
                         const selectableCustodians = custodians.filter(
                           (a) => a.is_active !== false,

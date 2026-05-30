@@ -1,3 +1,5 @@
+import { isApproverRole } from "../lib/roles";
+
 export function upsertById(items, item) {
   if (!item?.id) {
     return items;
@@ -16,7 +18,7 @@ export function removeById(items, id) {
 }
 
 export function isApproverUser(user) {
-  return ["approver", "both", "manager", "super_admin"].includes(user?.role);
+  return isApproverRole(user?.role);
 }
 
 export function isCustodianUser(user) {
