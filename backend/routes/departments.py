@@ -1,9 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, List
 from utils.helpers import db, require_admin, get_current_user
 from utils.cache import invalidate_metadata_cache, metadata_cache
 from utils.realtime_events import metadata_changed_payload
+from utils.roles import EXECUTIVE_ROLES, FORM_MANAGER_ROLES, SUPER_ADMIN, SUPERVISOR
 from realtime import manager
 import uuid
 from datetime import datetime, timezone
@@ -17,11 +18,85 @@ class DepartmentCreate(BaseModel):
     description: Optional[str] = ""
 
 
+class DepartmentGroup(BaseModel):
+    id: Optional[str] = None
+    name: str
+    supervisor_id: str
+    member_ids: List[str] = Field(default_factory=list)
+
+
 class DepartmentUpdate(BaseModel):
     name: Optional[str] = None
     code: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    department_groups: Optional[List[DepartmentGroup]] = None
+
+
+async def normalize_department_groups(dept_id: str, groups: List[DepartmentGroup]):
+    user_ids = set()
+    for group in groups:
+        user_ids.add(group.supervisor_id)
+        user_ids.update(group.member_ids)
+
+    users = await db.users.find(
+        {"id": {"$in": list(user_ids)}},
+        {"_id": 0, "password_hash": 0},
+    ).to_list(len(user_ids) or 1)
+    users_by_id = {user["id"]: user for user in users}
+    seen_members = set()
+    normalized = []
+
+    for group in groups:
+        name = group.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Department group name is required")
+
+        supervisor = users_by_id.get(group.supervisor_id)
+        if (
+            not supervisor
+            or supervisor.get("department_id") != dept_id
+            or supervisor.get("role") != SUPERVISOR
+            or supervisor.get("is_active") is False
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Department group supervisor must be an active supervisor in this department",
+            )
+
+        member_ids = []
+        for member_id in group.member_ids:
+            if member_id in seen_members:
+                raise HTTPException(status_code=400, detail="A user can belong to only one department group")
+
+            member = users_by_id.get(member_id)
+            member_role = member.get("role") if member else ""
+            if (
+                not member
+                or member.get("department_id") != dept_id
+                or member.get("is_active") is False
+                or member_role in FORM_MANAGER_ROLES
+                or member_role in EXECUTIVE_ROLES
+                or member_role in {SUPERVISOR, SUPER_ADMIN}
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Department group members must be active non-manager department users",
+                )
+
+            seen_members.add(member_id)
+            member_ids.append(member_id)
+
+        normalized.append(
+            {
+                "id": group.id or str(uuid.uuid4()),
+                "name": name,
+                "supervisor_id": group.supervisor_id,
+                "member_ids": member_ids,
+            }
+        )
+
+    return normalized
 
 
 @departments_router.get("")
@@ -66,7 +141,9 @@ async def create_department(req: DepartmentCreate, admin=Depends(require_admin))
 
 @departments_router.put("/{dept_id}")
 async def update_department(dept_id: str, req: DepartmentUpdate, admin=Depends(require_admin)):
-    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    updates = {k: v for k, v in req.model_dump(exclude={"department_groups"}).items() if v is not None}
+    if req.department_groups is not None:
+        updates["department_groups"] = await normalize_department_groups(dept_id, req.department_groups)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     if "code" in updates:

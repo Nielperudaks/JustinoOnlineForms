@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 templates_router = APIRouter(prefix="/form-templates", tags=["form-templates"])
 
 MAX_APPROVER_STEPS = 8
+SPECIAL_APPROVER_IDS = {"immediate_manager", "immediate_supervisor"}
 
 
 def manager_department_id(user):
@@ -48,7 +49,7 @@ async def validate_manager_assignments(user, approver_chain=None, custodian=None
     dept_id = manager_department_id(user)
     for approver in approver_chain or []:
         approver_id = approver.user_id if hasattr(approver, "user_id") else approver.get("user_id")
-        if approver_id == "immediate_manager":
+        if approver_id in SPECIAL_APPROVER_IDS:
             continue
         approver_user = await db.users.find_one(
             {

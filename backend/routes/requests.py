@@ -7,6 +7,7 @@ from utils.roles import (
     FORM_MANAGER_ROLES,
     MANAGER_ROLES,
     SUPER_ADMIN,
+    SUPERVISOR,
     executive_role_for_manager,
     is_requestor_capable,
 )
@@ -44,6 +45,69 @@ class RequestAction(BaseModel):
 
 class RequestCancel(BaseModel):
     comments: str
+
+
+async def resolve_immediate_manager(user, requester_dept_id):
+    if not requester_dept_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Requestor has no department assigned. Immediate Manager requires the requestor to have a department.",
+        )
+
+    executive_role = executive_role_for_manager(user)
+    if executive_role:
+        manager_query = {"role": executive_role, "is_active": True}
+        missing_detail = (
+            f"No Immediate Manager ({executive_role.replace('_', ' ').title()}) found. "
+            "Please assign the executive officer role."
+        )
+    else:
+        manager_query = {
+            "role": {"$in": list(MANAGER_ROLES)},
+            "department_id": requester_dept_id,
+            "is_active": True,
+        }
+        missing_detail = (
+            "No Immediate Manager found in requestor's department. "
+            "Please assign Manager (OPS) or Manager (SUP) to the requestor's department."
+        )
+
+    manager_user = await db.users.find_one(manager_query, {"_id": 0})
+    if not manager_user:
+        raise HTTPException(status_code=400, detail=missing_detail)
+    return manager_user["id"], manager_user.get("name", "Immediate Manager")
+
+
+async def resolve_immediate_supervisor(user, requester_dept_id):
+    if not requester_dept_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Requestor has no department assigned. Immediate Supervisor requires the requestor to have a department.",
+        )
+
+    if user.get("role") == SUPERVISOR:
+        return await resolve_immediate_manager(user, requester_dept_id)
+
+    department = await db.departments.find_one({"id": requester_dept_id}, {"_id": 0})
+    for group in (department or {}).get("department_groups", []):
+        if user.get("id") in group.get("member_ids", []):
+            supervisor = await db.users.find_one(
+                {
+                    "id": group.get("supervisor_id"),
+                    "role": SUPERVISOR,
+                    "department_id": requester_dept_id,
+                    "is_active": True,
+                },
+                {"_id": 0},
+            )
+            if not supervisor:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No Immediate Supervisor found for the requestor's department group. Please assign an active supervisor.",
+                )
+            return supervisor["id"], supervisor.get("name", "Immediate Supervisor")
+
+    return await resolve_immediate_manager(user, requester_dept_id)
 
 
 @requests_router.get("")
@@ -197,36 +261,9 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
         approver_name = step.get("user_name", "")
 
         if approver_id == "immediate_manager":
-            if not requester_dept_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Requestor has no department assigned. Immediate Manager requires the requestor to have a department."
-                )
-            executive_role = executive_role_for_manager(user)
-            if executive_role:
-                manager_query = {"role": executive_role, "is_active": True}
-                missing_detail = (
-                    f"No Immediate Manager ({executive_role.replace('_', ' ').title()}) found. "
-                    "Please assign the executive officer role."
-                )
-            else:
-                manager_query = {
-                    "role": {"$in": list(MANAGER_ROLES)},
-                    "department_id": requester_dept_id,
-                    "is_active": True,
-                }
-                missing_detail = (
-                    "No Immediate Manager found in requestor's department. "
-                    "Please assign Manager (OPS) or Manager (SUP) to the requestor's department."
-                )
-            manager_user = await db.users.find_one(manager_query, {"_id": 0})
-            if not manager_user:
-                raise HTTPException(
-                    status_code=400,
-                    detail=missing_detail,
-                )
-            approver_id = manager_user["id"]
-            approver_name = manager_user.get("name", "Immediate Manager")
+            approver_id, approver_name = await resolve_immediate_manager(user, requester_dept_id)
+        elif approver_id == "immediate_supervisor":
+            approver_id, approver_name = await resolve_immediate_supervisor(user, requester_dept_id)
 
         # Skip duplicate approvers so each user only appears once in the chain
         if approver_id in seen_approver_ids:

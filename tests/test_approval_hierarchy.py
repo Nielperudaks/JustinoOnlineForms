@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from backend.routes import requests
+from backend.utils.roles import APPROVER_ROLES, REQUESTOR_ROLES
 
 
 class FakeResult:
@@ -61,6 +62,21 @@ async def send_email_noop(*_args, **_kwargs):
 
 class FakeDb:
     def __init__(self):
+        self.departments = FakeCollection(
+            [
+                {
+                    "id": "dept-a",
+                    "department_groups": [
+                        {
+                            "id": "group-a",
+                            "name": "Team A",
+                            "supervisor_id": "supervisor-a",
+                            "member_ids": ["requestor-a"],
+                        }
+                    ],
+                }
+            ]
+        )
         self.form_templates = FakeCollection(
             [
                 {
@@ -113,6 +129,14 @@ class FakeDb:
                     "department_id": "executive",
                     "is_active": True,
                 },
+                {
+                    "id": "supervisor-a",
+                    "name": "Supervisor A",
+                    "email": "supervisor@example.com",
+                    "role": "supervisor",
+                    "department_id": "dept-a",
+                    "is_active": True,
+                },
             ]
         )
         self.requests = FakeCollection([])
@@ -130,12 +154,23 @@ def make_request():
     )
 
 
-def submit_as(user, monkeypatch):
-    monkeypatch.setattr(requests, "db", FakeDb())
+def submit_as(user, monkeypatch, approver_id="immediate_manager"):
+    db = FakeDb()
+    db.form_templates.items[0]["approver_chain"][0] = {
+        "step": 1,
+        "user_id": approver_id,
+        "user_name": "Immediate Supervisor" if approver_id == "immediate_supervisor" else "Immediate Manager",
+    }
+    monkeypatch.setattr(requests, "db", db)
     monkeypatch.setattr(requests, "manager", FakeManager())
     monkeypatch.setattr(requests, "send_email_notification", send_email_noop)
 
     return run(requests.create_request(make_request(), user=user))
+
+
+def test_supervisor_role_can_request_and_approve():
+    assert "supervisor" in REQUESTOR_ROLES
+    assert "supervisor" in APPROVER_ROLES
 
 
 def test_non_manager_user_routes_immediate_manager_to_department_manager(monkeypatch):
@@ -184,3 +219,52 @@ def test_manager_sup_routes_immediate_manager_to_executive_sup(monkeypatch):
 
     assert created["approvals"][0]["approver_id"] == "executive-sup"
     assert created["approvals"][0]["approver_name"] == "Executive SUP"
+
+
+def test_group_member_routes_immediate_supervisor_to_group_supervisor(monkeypatch):
+    created = submit_as(
+        {
+            "id": "requestor-a",
+            "name": "Requestor A",
+            "email": "requestor@example.com",
+            "role": "requestor",
+            "department_id": "dept-a",
+        },
+        monkeypatch,
+        approver_id="immediate_supervisor",
+    )
+
+    assert created["approvals"][0]["approver_id"] == "supervisor-a"
+    assert created["approvals"][0]["approver_name"] == "Supervisor A"
+
+
+def test_supervisor_requestor_routes_immediate_supervisor_to_manager(monkeypatch):
+    created = submit_as(
+        {
+            "id": "supervisor-a",
+            "name": "Supervisor A",
+            "email": "supervisor@example.com",
+            "role": "supervisor",
+            "department_id": "dept-a",
+        },
+        monkeypatch,
+        approver_id="immediate_supervisor",
+    )
+
+    assert created["approvals"][0]["approver_id"] == "manager-ops-a"
+
+
+def test_non_group_member_routes_immediate_supervisor_to_manager(monkeypatch):
+    created = submit_as(
+        {
+            "id": "requestor-b",
+            "name": "Requestor B",
+            "email": "requestor.b@example.com",
+            "role": "requestor",
+            "department_id": "dept-a",
+        },
+        monkeypatch,
+        approver_id="immediate_supervisor",
+    )
+
+    assert created["approvals"][0]["approver_id"] == "manager-ops-a"

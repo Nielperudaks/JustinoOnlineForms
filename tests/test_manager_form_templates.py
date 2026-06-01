@@ -188,6 +188,18 @@ def test_manager_can_assign_department_approval_capable_approver(fake_db):
     assert [step["user_id"] for step in created["approver_chain"]] == ["approver-a", "both-a", "immediate_manager"]
 
 
+def test_manager_can_assign_immediate_supervisor_placeholder(fake_db):
+    req = make_template_create(
+        approver_chain=[
+            form_templates.ApproverStep(step=1, user_id="immediate_supervisor", user_name="Immediate Supervisor"),
+        ]
+    )
+
+    created = run(form_templates.create_template(req, current=manager()))
+
+    assert created["approver_chain"][0]["user_id"] == "immediate_supervisor"
+
+
 def test_template_accepts_eight_approval_steps(fake_db):
     req = make_template_create(
         approver_chain=[
