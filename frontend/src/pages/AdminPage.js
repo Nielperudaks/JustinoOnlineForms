@@ -25,6 +25,7 @@ import {
   isApproverUser,
   isCustodianUser,
   getAvailableDepartmentGroupMembers,
+  getEditableDepartmentGroups,
   getSpecialApproverLabel,
   mergeServerItemsWithLocalChanges,
   removeById,
@@ -1073,7 +1074,7 @@ export default function AdminPage() {
   const openDepartmentGroupsDialog = (dept) => {
     setGroupDialogDepartment(dept);
     setEditingGroups(
-      (dept.department_groups || []).map((group) => ({
+      getEditableDepartmentGroups(users, dept.id, dept.department_groups).map((group) => ({
         ...group,
         member_ids: [...(group.member_ids || [])],
       })),

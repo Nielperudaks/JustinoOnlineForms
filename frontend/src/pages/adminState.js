@@ -61,6 +61,26 @@ export function getAvailableDepartmentGroupMembers(
   );
 }
 
+export function getEditableDepartmentGroups(users, departmentId, groups) {
+  return (groups || []).map((group) => {
+    const eligibleMemberIds = new Set(
+      getAvailableDepartmentGroupMembers(
+        users,
+        departmentId,
+        groups,
+        group.id,
+      ).map((user) => user.id),
+    );
+
+    return {
+      ...group,
+      member_ids: (group.member_ids || []).filter((memberId) =>
+        eligibleMemberIds.has(memberId),
+      ),
+    };
+  });
+}
+
 export function getSpecialApproverLabel(userId) {
   if (userId === "immediate_manager") return "Immediate Manager";
   if (userId === "immediate_supervisor") return "Immediate Supervisor";

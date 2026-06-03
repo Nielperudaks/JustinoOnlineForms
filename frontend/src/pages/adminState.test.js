@@ -4,6 +4,7 @@ import {
   isApproverUser,
   isCustodianUser,
   getAvailableDepartmentGroupMembers,
+  getEditableDepartmentGroups,
   getSpecialApproverLabel,
   mergeServerItemsWithLocalChanges,
 } from "./adminState";
@@ -62,6 +63,36 @@ describe("admin state helpers", () => {
     expect(
       getAvailableDepartmentGroupMembers(users, "dept-a", groups).map((u) => u.id),
     ).toEqual(["requestor-b"]);
+  });
+
+  test("normalizes department groups for editing by dropping stale invalid members", () => {
+    const users = [
+      { id: "requestor-a", role: "requestor", department_id: "dept-a", is_active: true },
+      { id: "approver-a", role: "approver", department_id: "dept-a", is_active: true },
+      { id: "manager-a", role: "manager_ops", department_id: "dept-a", is_active: true },
+      { id: "inactive-a", role: "requestor", department_id: "dept-a", is_active: false },
+      { id: "requestor-b", role: "requestor", department_id: "dept-b", is_active: true },
+    ];
+    const groups = [
+      {
+        id: "group-a",
+        name: "Team A",
+        supervisor_id: "supervisor-a",
+        member_ids: [
+          "requestor-a",
+          "approver-a",
+          "manager-a",
+          "inactive-a",
+          "requestor-b",
+          "missing-user",
+        ],
+      },
+    ];
+
+    expect(getEditableDepartmentGroups(users, "dept-a", groups)[0].member_ids).toEqual([
+      "requestor-a",
+      "approver-a",
+    ]);
   });
 
   test("labels special approver placeholders", () => {
