@@ -45,6 +45,7 @@ describe("admin state helpers", () => {
     expect(isApproverUser({ role: "executive_ops" })).toBe(true);
     expect(isApproverUser({ role: "executive_sup" })).toBe(true);
     expect(isApproverUser({ role: "supervisor" })).toBe(true);
+    expect(isApproverUser({ role: "executive" })).toBe(true);
     expect(isApproverUser({ role: "requestor" })).toBe(false);
     expect(isCustodianUser({ is_active: true })).toBe(true);
     expect(isCustodianUser({ is_active: false })).toBe(false);
@@ -54,6 +55,7 @@ describe("admin state helpers", () => {
     const users = [
       { id: "requestor-a", role: "requestor", department_id: "dept-a" },
       { id: "requestor-b", role: "requestor", department_id: "dept-a" },
+      { id: "executive-a", role: "executive", department_id: "dept-a" },
       { id: "supervisor-a", role: "supervisor", department_id: "dept-a" },
       { id: "manager-a", role: "manager_ops", department_id: "dept-a" },
       { id: "requestor-c", role: "requestor", department_id: "dept-b" },
@@ -62,13 +64,14 @@ describe("admin state helpers", () => {
 
     expect(
       getAvailableDepartmentGroupMembers(users, "dept-a", groups).map((u) => u.id),
-    ).toEqual(["requestor-b"]);
+    ).toEqual(["requestor-b", "executive-a"]);
   });
 
   test("normalizes department groups for editing by dropping stale invalid members", () => {
     const users = [
       { id: "requestor-a", role: "requestor", department_id: "dept-a", is_active: true },
       { id: "approver-a", role: "approver", department_id: "dept-a", is_active: true },
+      { id: "executive-a", role: "executive", department_id: "dept-a", is_active: true },
       { id: "manager-a", role: "manager_ops", department_id: "dept-a", is_active: true },
       { id: "inactive-a", role: "requestor", department_id: "dept-a", is_active: false },
       { id: "requestor-b", role: "requestor", department_id: "dept-b", is_active: true },
@@ -81,6 +84,7 @@ describe("admin state helpers", () => {
         member_ids: [
           "requestor-a",
           "approver-a",
+          "executive-a",
           "manager-a",
           "inactive-a",
           "requestor-b",
@@ -92,6 +96,7 @@ describe("admin state helpers", () => {
     expect(getEditableDepartmentGroups(users, "dept-a", groups)[0].member_ids).toEqual([
       "requestor-a",
       "approver-a",
+      "executive-a",
     ]);
   });
 

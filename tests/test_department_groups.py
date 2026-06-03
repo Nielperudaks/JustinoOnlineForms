@@ -89,6 +89,7 @@ class FakeDb:
                 {"id": "supervisor-b", "name": "Supervisor B", "role": "supervisor", "department_id": "dept-a", "is_active": True},
                 {"id": "requestor-a", "name": "Requestor A", "role": "requestor", "department_id": "dept-a", "is_active": True},
                 {"id": "both-a", "name": "Both A", "role": "both", "department_id": "dept-a", "is_active": True},
+                {"id": "executive-a", "name": "Executive A", "role": "executive", "department_id": "dept-a", "is_active": True},
                 {"id": "manager-a", "name": "Manager A", "role": "manager_ops", "department_id": "dept-a", "is_active": True},
                 {"id": "requestor-b", "name": "Requestor B", "role": "requestor", "department_id": "dept-b", "is_active": True},
             ]
@@ -128,6 +129,22 @@ def test_update_department_accepts_valid_department_groups(fake_db):
     assert updated["department_groups"][0]["supervisor_id"] == "supervisor-a"
     assert updated["department_groups"][0]["member_ids"] == ["requestor-a", "both-a"]
     assert updated["department_groups"][0]["id"]
+
+
+def test_update_department_accepts_plain_executive_as_group_member(fake_db):
+    req = departments.DepartmentUpdate(
+        department_groups=[
+            {
+                "name": "Executive Team",
+                "supervisor_id": "supervisor-a",
+                "member_ids": ["executive-a"],
+            }
+        ]
+    )
+
+    updated = run(departments.update_department("dept-a", req, admin=admin()))
+
+    assert updated["department_groups"][0]["member_ids"] == ["executive-a"]
 
 
 def test_update_department_rejects_duplicate_group_member(fake_db):

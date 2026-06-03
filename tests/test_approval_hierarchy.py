@@ -173,6 +173,12 @@ def test_supervisor_role_can_request_and_approve():
     assert "supervisor" in APPROVER_ROLES
 
 
+def test_executive_role_can_request_and_approve_without_managerial_fallback():
+    assert "executive" in REQUESTOR_ROLES
+    assert "executive" in APPROVER_ROLES
+    assert requests.executive_role_for_manager({"role": "executive"}) is None
+
+
 def test_non_manager_user_routes_immediate_manager_to_department_manager(monkeypatch):
     created = submit_as(
         {
