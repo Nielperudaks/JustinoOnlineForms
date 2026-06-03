@@ -17,7 +17,6 @@ import {
   listAllTemplates,
   updateTemplate,
   createTemplate,
-  deleteTemplate,
   listApprovers,
   listCustodians,
   getDashboardStats,
@@ -442,15 +441,6 @@ export default function AdminPage() {
     });
   }, [rememberLocalChange]);
 
-  const removeTemplateFromState = useCallback((templateId) => {
-    rememberLocalChange("templates", templateId, true);
-    setTemplates((prev) => {
-      const next = removeById(prev, templateId);
-      setStats((current) => ({ ...current, total_templates: next.length }));
-      return next;
-    });
-  }, [rememberLocalChange]);
-
   useEffect(() => {
     if (!canManageSettings) {
       navigate("/");
@@ -693,23 +683,16 @@ export default function AdminPage() {
     setShowBuildFormDialog(true);
   };
 
-  const handleDeleteForm = async (tmpl) => {
-    const confirmed = window.confirm(
-      `This will permanently delete the form "${tmpl.name}".\n\n` +
-        "- It will no longer be available for new requests.\n" +
-        "- You cannot undo this action.\n" +
-        "- Forms with pending or active requests cannot be deleted.\n\n" +
-        "Do you want to permanently delete this form?"
-    );
-    if (!confirmed) return;
-
+  const handleToggleTemplateActive = async (tmpl) => {
+    const isCurrentlyActive = tmpl.is_active !== false;
     try {
-      await deleteTemplate(tmpl.id);
-      removeTemplateFromState(tmpl.id);
-      toast.success("Form deleted");
-      setExpandedTemplate((prev) => (prev === tmpl.id ? null : prev));
+      const { data: savedTemplate } = await updateTemplate(tmpl.id, {
+        is_active: !isCurrentlyActive,
+      });
+      applyTemplateToState(savedTemplate);
+      toast.success(isCurrentlyActive ? "Form disabled" : "Form enabled");
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to delete form");
+      toast.error(err.response?.data?.detail || "Failed to update form status");
     }
   };
 
@@ -1227,6 +1210,7 @@ export default function AdminPage() {
                       </div>
                       {deptTemplates.map((tmpl) => {
                         const isExpanded = expandedTemplate === tmpl.id;
+                        const isTemplateActive = tmpl.is_active !== false;
                         const chain = tmpl.approver_chain || [];
                         const custodian = tmpl.custodian;
                         const selectableApprovers = approvers.filter(
@@ -1238,7 +1222,9 @@ export default function AdminPage() {
                         return (
                           <div
                             key={tmpl.id}
-                            className="border-b border-slate-50"
+                            className={`border-b border-slate-50 ${
+                              isTemplateActive ? "" : "bg-slate-50/70"
+                            }`}
                           >
                             <div className="w-full flex items-center justify-between p-3 px-4 hover:bg-slate-50/50 transition-colors">
                               <button
@@ -1251,8 +1237,21 @@ export default function AdminPage() {
                                 <div className="flex items-center gap-3 min-w-0">
                                   <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
                                   <div className="min-w-0">
-                                    <div className="text-sm font-medium text-slate-700">
-                                      {tmpl.name}
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div
+                                        className={`text-sm font-medium truncate ${
+                                          isTemplateActive
+                                            ? "text-slate-700"
+                                            : "text-slate-400"
+                                        }`}
+                                      >
+                                        {tmpl.name}
+                                      </div>
+                                      {!isTemplateActive && (
+                                        <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[10px]">
+                                          Disabled
+                                        </Badge>
+                                      )}
                                     </div>
                                     <div className="text-[10px] text-slate-400">
                                       {tmpl.fields?.length} fields ·{" "}
@@ -1285,7 +1284,23 @@ export default function AdminPage() {
                                   )}
                                 </div>
                               </button>
-                              <div className="flex items-center gap-0.5 flex-shrink-0 ml-2">
+                              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                <div
+                                  className="flex items-center gap-1.5 px-1.5"
+                                  title={isTemplateActive ? "Disable form" : "Enable form"}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Switch
+                                    checked={isTemplateActive}
+                                    onCheckedChange={() =>
+                                      handleToggleTemplateActive(tmpl)
+                                    }
+                                    data-testid={`toggle-template-active-${tmpl.id}`}
+                                  />
+                                  <span className="text-[10px] text-slate-400">
+                                    {isTemplateActive ? "Enabled" : "Disabled"}
+                                  </span>
+                                </div>
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1297,18 +1312,6 @@ export default function AdminPage() {
                                   data-testid={`edit-template-${tmpl.id}`}
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteForm(tmpl);
-                                  }}
-                                  className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-red-600 transition-colors"
-                                  title="Deactivate form"
-                                  data-testid={`delete-template-${tmpl.id}`}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </div>

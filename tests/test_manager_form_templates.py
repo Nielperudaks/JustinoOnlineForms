@@ -140,6 +140,7 @@ def super_admin():
 def fake_db(monkeypatch):
     db = FakeDb()
     monkeypatch.setattr(form_templates, "db", db)
+    form_templates.invalidate_metadata_cache()
     return db
 
 
@@ -164,6 +165,47 @@ def test_super_admin_lists_all_templates(fake_db):
     templates = run(form_templates.list_all_templates(current=super_admin()))
 
     assert {template["id"] for template in templates} == {"template-a", "template-b"}
+
+
+def test_public_template_list_excludes_disabled_templates(fake_db):
+    fake_db.form_templates.items.append(
+        {
+            "id": "template-disabled",
+            "department_id": "dept-a",
+            "name": "Disabled Form",
+            "description": "",
+            "fields": [],
+            "approver_chain": [],
+            "custodian": None,
+            "is_active": False,
+        }
+    )
+
+    templates = run(form_templates.list_templates(department_id="dept-a", user=manager()))
+
+    assert [template["id"] for template in templates] == ["template-a"]
+
+
+def test_admin_template_list_includes_disabled_templates(fake_db):
+    fake_db.form_templates.items.append(
+        {
+            "id": "template-disabled",
+            "department_id": "dept-a",
+            "name": "Disabled Form",
+            "description": "",
+            "fields": [],
+            "approver_chain": [],
+            "custodian": None,
+            "is_active": False,
+        }
+    )
+
+    templates = run(form_templates.list_all_templates(current=manager()))
+
+    assert [template["id"] for template in templates] == [
+        "template-a",
+        "template-disabled",
+    ]
 
 
 def test_manager_cannot_create_template_for_another_department(fake_db):
