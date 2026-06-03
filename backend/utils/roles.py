@@ -3,13 +3,14 @@ MANAGER_SUP = "manager_sup"
 EXECUTIVE_OPS = "executive_ops"
 EXECUTIVE_SUP = "executive_sup"
 LEGACY_MANAGER = "manager"
+SUPERVISOR = "supervisor"
 SUPER_ADMIN = "super_admin"
 
-REQUESTOR_ROLES = {"requestor", "both", MANAGER_OPS, MANAGER_SUP, SUPER_ADMIN}
+REQUESTOR_ROLES = {"requestor", "both", MANAGER_OPS, MANAGER_SUP, SUPERVISOR, SUPER_ADMIN}
 MANAGER_ROLES = {MANAGER_OPS, MANAGER_SUP}
 FORM_MANAGER_ROLES = MANAGER_ROLES | {LEGACY_MANAGER}
 EXECUTIVE_ROLES = {EXECUTIVE_OPS, EXECUTIVE_SUP}
-APPROVER_ROLES = {"approver", "both", SUPER_ADMIN} | FORM_MANAGER_ROLES | EXECUTIVE_ROLES
+APPROVER_ROLES = {"approver", "both", SUPERVISOR, SUPER_ADMIN} | FORM_MANAGER_ROLES | EXECUTIVE_ROLES
 
 EXECUTIVE_BY_MANAGER_ROLE = {
     MANAGER_OPS: EXECUTIVE_OPS,
@@ -31,6 +32,10 @@ def is_manager_role(role):
 
 def is_manager(user):
     return is_manager_role(role_of(user))
+
+
+def is_supervisor_role(role):
+    return role == SUPERVISOR
 
 
 def is_approval_capable(user):

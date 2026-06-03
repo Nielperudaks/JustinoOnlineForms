@@ -3,6 +3,8 @@ import {
   removeById,
   isApproverUser,
   isCustodianUser,
+  getAvailableDepartmentGroupMembers,
+  getSpecialApproverLabel,
   mergeServerItemsWithLocalChanges,
 } from "./adminState";
 
@@ -41,9 +43,31 @@ describe("admin state helpers", () => {
     expect(isApproverUser({ role: "manager_sup" })).toBe(true);
     expect(isApproverUser({ role: "executive_ops" })).toBe(true);
     expect(isApproverUser({ role: "executive_sup" })).toBe(true);
+    expect(isApproverUser({ role: "supervisor" })).toBe(true);
     expect(isApproverUser({ role: "requestor" })).toBe(false);
     expect(isCustodianUser({ is_active: true })).toBe(true);
     expect(isCustodianUser({ is_active: false })).toBe(false);
+  });
+
+  test("filters department group members to eligible unassigned users", () => {
+    const users = [
+      { id: "requestor-a", role: "requestor", department_id: "dept-a" },
+      { id: "requestor-b", role: "requestor", department_id: "dept-a" },
+      { id: "supervisor-a", role: "supervisor", department_id: "dept-a" },
+      { id: "manager-a", role: "manager_ops", department_id: "dept-a" },
+      { id: "requestor-c", role: "requestor", department_id: "dept-b" },
+    ];
+    const groups = [{ id: "group-1", member_ids: ["requestor-a"] }];
+
+    expect(
+      getAvailableDepartmentGroupMembers(users, "dept-a", groups).map((u) => u.id),
+    ).toEqual(["requestor-b"]);
+  });
+
+  test("labels special approver placeholders", () => {
+    expect(getSpecialApproverLabel("immediate_manager")).toBe("Immediate Manager");
+    expect(getSpecialApproverLabel("immediate_supervisor")).toBe("Immediate Supervisor");
+    expect(getSpecialApproverLabel("user-1")).toBe("");
   });
 
   test("keeps recent local template changes when a stale refresh arrives", () => {

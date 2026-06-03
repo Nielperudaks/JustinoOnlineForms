@@ -25,6 +25,48 @@ export function isCustodianUser(user) {
   return user?.is_active !== false;
 }
 
+const GROUP_MEMBER_EXCLUDED_ROLES = new Set([
+  "supervisor",
+  "manager",
+  "manager_ops",
+  "manager_sup",
+  "executive_ops",
+  "executive_sup",
+  "super_admin",
+]);
+
+export function getAvailableDepartmentGroupMembers(
+  users,
+  departmentId,
+  groups,
+  currentGroupId = null,
+) {
+  const assignedMemberIds = new Set();
+
+  for (const group of groups || []) {
+    if (currentGroupId && group.id === currentGroupId) {
+      continue;
+    }
+    for (const memberId of group.member_ids || []) {
+      assignedMemberIds.add(memberId);
+    }
+  }
+
+  return (users || []).filter(
+    (user) =>
+      user.department_id === departmentId &&
+      user.is_active !== false &&
+      !GROUP_MEMBER_EXCLUDED_ROLES.has(user.role) &&
+      !assignedMemberIds.has(user.id),
+  );
+}
+
+export function getSpecialApproverLabel(userId) {
+  if (userId === "immediate_manager") return "Immediate Manager";
+  if (userId === "immediate_supervisor") return "Immediate Supervisor";
+  return "";
+}
+
 function itemVersion(item) {
   const value = item?.updated_at || item?.created_at || "";
   const parsed = Date.parse(value);

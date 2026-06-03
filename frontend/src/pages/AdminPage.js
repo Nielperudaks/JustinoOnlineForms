@@ -24,6 +24,8 @@ import {
 import {
   isApproverUser,
   isCustodianUser,
+  getAvailableDepartmentGroupMembers,
+  getSpecialApproverLabel,
   mergeServerItemsWithLocalChanges,
   removeById,
   upsertById,
@@ -64,6 +66,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import BuildFormDialog from "@/components/BuildFormDialog";
 import {
   ArrowLeft,
@@ -93,12 +104,12 @@ const APPROVER_STEPS = Array.from(
 function ApproverPicker({ assigned, approvers, onSelect, testId, placeholder }) {
   const [open, setOpen] = useState(false);
   const selectedApprover = approvers.find((a) => a.id === assigned?.user_id);
+  const specialLabel = getSpecialApproverLabel(assigned?.user_id);
   const selectedLabel =
-    assigned?.user_id === "immediate_manager"
-      ? "Immediate Manager"
-      : selectedApprover
+    specialLabel ||
+    (selectedApprover
         ? `${selectedApprover.name} (${selectedApprover.email})`
-        : assigned?.user_name || "";
+        : assigned?.user_name || "");
 
   const handleSelect = (userId) => {
     onSelect(userId);
@@ -141,6 +152,25 @@ function ApproverPicker({ assigned, approvers, onSelect, testId, placeholder }) 
                   <div className="font-medium text-slate-700">Immediate Manager</div>
                   <div className="text-[11px] text-slate-400">
                     Routes to the requester's department manager
+                  </div>
+                </div>
+              </CommandItem>
+              <CommandItem
+                value="Immediate Supervisor"
+                onSelect={() => handleSelect("immediate_supervisor")}
+                className="text-xs"
+              >
+                <Check
+                  className={`w-3.5 h-3.5 ${
+                    assigned?.user_id === "immediate_supervisor"
+                      ? "opacity-100"
+                      : "opacity-0"
+                  }`}
+                />
+                <div className="min-w-0">
+                  <div className="font-medium text-slate-700">Immediate Supervisor</div>
+                  <div className="text-[11px] text-slate-400">
+                    Routes to the requester's department group supervisor
                   </div>
                 </div>
               </CommandItem>
@@ -240,6 +270,222 @@ function CustodianPicker({ assigned, custodians, onSelect, testId, placeholder }
   );
 }
 
+function createLocalGroupId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `group-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function DepartmentGroupsDialog({
+  department,
+  users,
+  groups,
+  onGroupsChange,
+  onClose,
+  onSave,
+  isSaving,
+}) {
+  const departmentUsers = users.filter(
+    (u) => u.department_id === department?.id && u.is_active !== false,
+  );
+  const supervisorOptions = departmentUsers.filter((u) => u.role === "supervisor");
+
+  const updateGroup = (groupId, updates) => {
+    onGroupsChange(
+      groups.map((group) =>
+        group.id === groupId ? { ...group, ...updates } : group,
+      ),
+    );
+  };
+
+  const addGroup = () => {
+    onGroupsChange([
+      ...groups,
+      {
+        id: createLocalGroupId(),
+        name: "",
+        supervisor_id: "",
+        member_ids: [],
+      },
+    ]);
+  };
+
+  const removeGroup = (groupId) => {
+    onGroupsChange(groups.filter((group) => group.id !== groupId));
+  };
+
+  const toggleMember = (group, memberId, checked) => {
+    const currentIds = group.member_ids || [];
+    updateGroup(group.id, {
+      member_ids: checked
+        ? [...currentIds, memberId]
+        : currentIds.filter((id) => id !== memberId),
+    });
+  };
+
+  return (
+    <Dialog open={Boolean(department)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Department Groups</DialogTitle>
+          <DialogDescription>
+            Assign supervisors and one group membership per department user.
+          </DialogDescription>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[60vh] pr-4">
+          <div className="space-y-3">
+            {groups.map((group, index) => {
+              const availableMembers = getAvailableDepartmentGroupMembers(
+                users,
+                department?.id,
+                groups,
+                group.id,
+              );
+              const selectedMembers = departmentUsers.filter((u) =>
+                (group.member_ids || []).includes(u.id),
+              );
+              const memberOptions = Array.from(
+                new Map(
+                  [...selectedMembers, ...availableMembers].map((member) => [
+                    member.id,
+                    member,
+                  ]),
+                ).values(),
+              );
+
+              return (
+                <div
+                  key={group.id}
+                  className="rounded-md border border-slate-200 bg-white p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold text-slate-600">
+                      Group {index + 1}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeGroup(group.id)}
+                      className="h-7 px-2 text-slate-400 hover:text-red-600"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">Group name *</Label>
+                      <Input
+                        value={group.name}
+                        onChange={(e) => updateGroup(group.id, { name: e.target.value })}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">Supervisor *</Label>
+                      <Select
+                        value={group.supervisor_id || ""}
+                        onValueChange={(value) =>
+                          updateGroup(group.id, { supervisor_id: value })
+                        }
+                      >
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue placeholder="Select supervisor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {supervisorOptions.map((supervisor) => (
+                            <SelectItem key={supervisor.id} value={supervisor.id}>
+                              {supervisor.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    <Label className="text-xs text-slate-600">Members</Label>
+                    {memberOptions.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {memberOptions.map((member) => {
+                          const checked = (group.member_ids || []).includes(member.id);
+                          return (
+                            <label
+                              key={member.id}
+                              className="flex items-center gap-2 rounded-md border border-slate-100 px-2 py-2 text-xs text-slate-600"
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(value) =>
+                                  toggleMember(group, member.id, value === true)
+                                }
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium text-slate-700">
+                                  {member.name}
+                                </span>
+                                <span className="block truncate text-[11px] text-slate-400">
+                                  {member.email}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400">
+                        No eligible unassigned members in this department.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {groups.length === 0 && (
+              <div className="rounded-md border border-dashed border-slate-200 py-8 text-center text-xs text-slate-400">
+                No groups configured.
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={addGroup}
+            className="h-9 px-3 text-xs"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1" />
+            Add Group
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            className="h-9 px-3 text-xs"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={onSave}
+            disabled={isSaving}
+            className="h-9 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Save className="w-3.5 h-3.5 mr-1" />
+            {isSaving ? "Saving..." : "Save Groups"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AdminPage() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -302,6 +548,9 @@ export default function AdminPage() {
     description: "",
   });
   const [isUpdatingDepartment, setIsUpdatingDepartment] = useState(false);
+  const [groupDialogDepartment, setGroupDialogDepartment] = useState(null);
+  const [editingGroups, setEditingGroups] = useState([]);
+  const [isSavingGroups, setIsSavingGroups] = useState(false);
 
   const fetchAll = useCallback(async () => {
     const refreshId = latestRefreshId.current + 1;
@@ -587,9 +836,10 @@ export default function AdminPage() {
   const handleAssignApprover = async (templateId, step, userId) => {
     const tmpl = templates.find((t) => t.id === templateId);
     if (!tmpl) return;
-    const isImmediateManager = userId === "immediate_manager";
+    const specialName = getSpecialApproverLabel(userId);
     const approver = approvers.find((a) => a.id === userId);
-    const displayName = isImmediateManager ? "Immediate Manager" : (approver?.name || "");
+    if (!specialName && !approver) return;
+    const displayName = specialName || approver?.name || "";
     const chain = [...(tmpl.approver_chain || [])];
     const existingIdx = chain.findIndex((a) => a.step === step);
     if (existingIdx >= 0) {
@@ -820,6 +1070,41 @@ export default function AdminPage() {
     }
   };
 
+  const openDepartmentGroupsDialog = (dept) => {
+    setGroupDialogDepartment(dept);
+    setEditingGroups(
+      (dept.department_groups || []).map((group) => ({
+        ...group,
+        member_ids: [...(group.member_ids || [])],
+      })),
+    );
+  };
+
+  const closeDepartmentGroupsDialog = () => {
+    setGroupDialogDepartment(null);
+    setEditingGroups([]);
+  };
+
+  const handleSaveDepartmentGroups = async () => {
+    if (!groupDialogDepartment) return;
+
+    setIsSavingGroups(true);
+    try {
+      const { data: savedDepartment } = await updateDepartment(
+        groupDialogDepartment.id,
+        { department_groups: editingGroups },
+      );
+      rememberLocalChange("departments", savedDepartment);
+      setDepartments((prev) => upsertById(prev, savedDepartment));
+      toast.success("Department groups updated");
+      closeDepartmentGroupsDialog();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to update department groups");
+    } finally {
+      setIsSavingGroups(false);
+    }
+  };
+
   const getDeptName = (id) => departments.find((d) => d.id === id)?.name || "—";
 
   const filteredUsers = users.filter(
@@ -844,6 +1129,7 @@ export default function AdminPage() {
     requestor: "bg-slate-100 text-slate-600 border-slate-200",
     approver: "bg-blue-50 text-blue-700 border-blue-200",
     both: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    supervisor: "bg-teal-50 text-teal-700 border-teal-200",
     manager: "bg-amber-50 text-amber-700 border-amber-200",
     manager_ops: "bg-amber-50 text-amber-700 border-amber-200",
     manager_sup: "bg-orange-50 text-orange-700 border-orange-200",
@@ -1542,6 +1828,17 @@ export default function AdminPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                onClick={() => openDepartmentGroupsDialog(dept)}
+                                className="h-8 px-3 text-xs"
+                                data-testid={`department-groups-${dept.id}`}
+                              >
+                                <Users className="w-3.5 h-3.5 mr-1" />
+                                Groups
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
                                 onClick={cancelEditingDepartment}
                                 className="h-8 px-3 text-xs"
                               >
@@ -1612,6 +1909,7 @@ export default function AdminPage() {
                           <div className="flex gap-4 text-xs text-slate-500">
                             <span>{deptTemplateCount} forms</span>
                             <span>{deptUserCount} users</span>
+                            <span>{(dept.department_groups || []).length} groups</span>
                           </div>
                           {cannotDelete && (
                             <p className="mt-3 text-[11px] text-amber-600">
@@ -1642,6 +1940,18 @@ export default function AdminPage() {
           onSubmit={handleBuildFormSubmit}
           initialTemplate={editingTemplate}
           lockedDepartmentId={isManager ? user?.department_id : null}
+        />
+      )}
+
+      {groupDialogDepartment && (
+        <DepartmentGroupsDialog
+          department={groupDialogDepartment}
+          users={users}
+          groups={editingGroups}
+          onGroupsChange={setEditingGroups}
+          onClose={closeDepartmentGroupsDialog}
+          onSave={handleSaveDepartmentGroups}
+          isSaving={isSavingGroups}
         />
       )}
     </div>
