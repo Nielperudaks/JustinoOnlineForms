@@ -244,6 +244,25 @@ def test_request_list_filters_by_form_and_created_date(monkeypatch):
     assert [item["id"] for item in result["items"]] == ["req-1"]
 
 
+def test_request_list_filters_by_requester_id(monkeypatch):
+    db = FakeDb()
+    monkeypatch.setattr(requests, "db", db)
+
+    result = run(
+        requests.list_requests(
+            requester_id="missing-user",
+            offset=0,
+            page=1,
+            limit=50,
+            user={"id": "admin", "role": "super_admin"},
+        )
+    )
+
+    query = db.requests.count_calls[0]
+    assert query["requester_id"] == "missing-user"
+    assert result["items"] == []
+
+
 def test_dashboard_stats_uses_single_request_aggregation(monkeypatch):
     db = FakeDb()
     monkeypatch.setattr(dashboard, "db", db)

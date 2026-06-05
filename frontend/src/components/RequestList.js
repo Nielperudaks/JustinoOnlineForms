@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   CalendarDays,
   Files,
+  UserRound,
   X,
 } from "lucide-react";
 import { differenceInHours, formatDistanceToNow } from "date-fns";
@@ -109,16 +110,54 @@ export default function RequestList({
   onDateFilterChange,
   formFilter = "",
   onFormFilterChange,
+  users = [],
+  userFilter = "",
+  onUserFilterChange,
 }) {
   const scrollAreaRef = useRef(null);
+  const [userSearchQuery, setUserSearchQuery] = useState("");
   const showInitialLoading = loading && requests.length === 0;
   const dateFilterActive = Boolean(dateFilter?.from || dateFilter?.to);
   const formFilterActive = Boolean(formFilter);
+  const userFilterActive = Boolean(userFilter);
   const selectedTemplate = templates.find((template) => template.id === formFilter);
   const formOptions = useMemo(
     () => templates.filter((template) => template.is_active !== false),
     [templates],
   );
+  const allUserOptions = useMemo(() => {
+    const byId = new Map();
+
+    users.forEach((item) => {
+      if (item?.id) {
+        byId.set(item.id, item);
+      }
+    });
+
+    requests.forEach((request) => {
+      if (request.requester_id && !byId.has(request.requester_id)) {
+        byId.set(request.requester_id, {
+          id: request.requester_id,
+          name: request.requester_name || "Unknown user",
+        });
+      }
+    });
+
+    return Array.from(byId.values())
+      .filter((item) => item.is_active !== false)
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [requests, users]);
+  const selectedUser = allUserOptions.find((item) => item.id === userFilter);
+  const userOptions = useMemo(() => {
+    const normalizedSearch = userSearchQuery.trim().toLowerCase();
+    return allUserOptions
+      .filter((item) => {
+        if (!normalizedSearch) return true;
+        return [item.name, item.email]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(normalizedSearch));
+      });
+  }, [allUserOptions, userSearchQuery]);
 
   const loadMoreRequests = useCallback(() => {
     if (loading || loadingMore || !hasMore || !onLoadMore) {
@@ -260,6 +299,81 @@ export default function RequestList({
                   <X className="w-3.5 h-3.5" />
                   Clear date
                 </button>
+              </div>
+            </PopoverContent>
+          </Popover>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-testid="user-filter-trigger"
+                title={selectedUser?.name || "Any user"}
+                className={`relative h-9 w-9 rounded-md border flex items-center justify-center transition-colors ${
+                  userFilterActive
+                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                    : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                <UserRound className="w-4 h-4" />
+                {userFilterActive && (
+                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 p-2">
+              <div className="px-1.5 pb-2 pt-1">
+                <p className="text-xs font-semibold text-slate-700">User filter</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                  {selectedUser?.name || "Any user"}
+                </p>
+              </div>
+              <div className="relative mb-2">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Input
+                  data-testid="user-filter-search"
+                  placeholder="Search users..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <div className="max-h-64 overflow-y-auto pr-1">
+                <button
+                  type="button"
+                  onClick={() => onUserFilterChange?.("")}
+                  className={`w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
+                    !userFilter
+                      ? "bg-blue-50 text-blue-700"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  All users
+                </button>
+                {userOptions.length === 0 ? (
+                  <div className="px-2 py-4 text-center text-xs text-slate-400">
+                    No users found
+                  </div>
+                ) : (
+                  userOptions.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => onUserFilterChange?.(item.id)}
+                      className={`mt-1 w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
+                        userFilter === item.id
+                          ? "bg-blue-50 text-blue-700"
+                          : "text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="block truncate">{item.name}</span>
+                      {item.email && (
+                        <span className="mt-0.5 block truncate text-[11px] text-slate-400">
+                          {item.email}
+                        </span>
+                      )}
+                    </button>
+                  ))
+                )}
               </div>
             </PopoverContent>
           </Popover>

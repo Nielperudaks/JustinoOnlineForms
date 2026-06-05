@@ -7,6 +7,7 @@ import { useReactiveRefresh } from "@/hooks/useReactiveRefresh";
 
 import {
   listRequests,
+  listUsers,
   listDepartments,
   listTemplates,
   getDashboardStats,
@@ -31,7 +32,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { getSettingsMenuItems } from "@/components/settingsMenu";
-import { isRequestorRole, isApproverRole, isSuperAdminRole } from "@/lib/roles";
+import { isRequestorRole, isApproverRole, isSuperAdminRole, isManagerRole } from "@/lib/roles";
 import { Plus, Bell, Settings, LogOut, Menu, KeyRound, ClipboardList } from "lucide-react";
 
 const INITIAL_REQUEST_PAGE_SIZE = 12;
@@ -45,6 +46,7 @@ export default function DashboardPage() {
 
   const [departments, setDepartments] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [users, setUsers] = useState([]);
   const [requests, setRequests] = useState([]);
   const [totalRequests, setTotalRequests] = useState(0);
   const [stats, setStats] = useState({});
@@ -60,6 +62,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [requestDateFilter, setRequestDateFilter] = useState(EMPTY_REQUEST_DATE_FILTER);
   const [requestFormFilter, setRequestFormFilter] = useState("");
+  const [requestUserFilter, setRequestUserFilter] = useState("");
   const linkedRequestId = searchParams.get("request");
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -145,6 +148,7 @@ export default function DashboardPage() {
       if (activeFilter === "cancelled") params.status = "cancelled";
       if (searchQuery) params.search = searchQuery;
       if (requestFormFilter) params.form_template_id = requestFormFilter;
+      if (requestUserFilter) params.requester_id = requestUserFilter;
       if (requestDateFilter.from) params.date_from = requestDateFilter.from;
       if (requestDateFilter.to) params.date_to = requestDateFilter.to;
 
@@ -172,7 +176,7 @@ export default function DashboardPage() {
         setLoading(false);
       }
     }
-  }, [user?.role, selectedDept, activeFilter, searchQuery, requestFormFilter, requestDateFilter]);
+  }, [user?.role, selectedDept, activeFilter, searchQuery, requestFormFilter, requestUserFilter, requestDateFilter]);
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -183,6 +187,22 @@ export default function DashboardPage() {
       console.error("Fetch templates error:", err);
     }
   }, [selectedDept]);
+
+  const fetchUsers = useCallback(async () => {
+    if (!isSuperAdminRole(user?.role) && !isManagerRole(user?.role)) {
+      setUsers([]);
+      return;
+    }
+
+    try {
+      const params = selectedDept ? { department_id: selectedDept } : {};
+      const res = await listUsers(params);
+      setUsers(res.data);
+    } catch (err) {
+      console.error("Fetch users error:", err);
+      setUsers([]);
+    }
+  }, [selectedDept, user?.role]);
 
   // Reset activeFilter if current filter is not allowed for user's role
   useEffect(() => {
@@ -203,6 +223,9 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchTemplates();
   }, [fetchTemplates]);
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   useLiveUpdates({
     enabled: !!user,
@@ -590,6 +613,9 @@ export default function DashboardPage() {
                 onDateFilterChange={setRequestDateFilter}
                 formFilter={requestFormFilter}
                 onFormFilterChange={setRequestFormFilter}
+                users={users}
+                userFilter={requestUserFilter}
+                onUserFilterChange={setRequestUserFilter}
                 loading={loading}
                 loadingMore={loadingMoreRequests}
                 hasMore={hasMoreRequests}
@@ -616,6 +642,9 @@ export default function DashboardPage() {
               onDateFilterChange={setRequestDateFilter}
               formFilter={requestFormFilter}
               onFormFilterChange={setRequestFormFilter}
+              users={users}
+              userFilter={requestUserFilter}
+              onUserFilterChange={setRequestUserFilter}
               loading={loading}
               loadingMore={loadingMoreRequests}
               hasMore={hasMoreRequests}

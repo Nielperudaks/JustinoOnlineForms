@@ -115,6 +115,7 @@ async def list_requests(
     status: Optional[str] = None,
     department_id: Optional[str] = None,
     form_template_id: Optional[str] = None,
+    requester_id: Optional[str] = None,
     custodian_status: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -140,6 +141,8 @@ async def list_requests(
         query["department_id"] = department_id
     if form_template_id:
         query["form_template_id"] = form_template_id
+    if requester_id:
+        query["requester_id"] = requester_id
     if custodian_status:
         query["custodian.status"] = custodian_status
     created_at_filter = {}
