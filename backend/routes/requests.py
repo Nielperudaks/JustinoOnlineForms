@@ -359,7 +359,7 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
             await db.notifications.insert_one(notif)
             await send_email_notification(
                 first_approver.get("email", ""),
-                f"Approval Required: {request_number} - {display_title}",
+                f"Approval Required: {display_title} - {request_number}",
                 render_request_email(
                     heading="New Request Pending Your Approval",
                     request_id=result["id"],
@@ -394,7 +394,7 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
         await db.notifications.insert_one(notif)
         await send_email_notification(
             custodian_user.get("email", "") if custodian_user else "",
-            f"Fulfillment Required: {request_number} - {display_title}",
+            f"Fulfillment Required: {display_title} - {request_number}",
             render_request_email(
                 heading="Request Ready for Fulfillment",
                 request_id=result["id"],
@@ -501,7 +501,7 @@ async def cancel_request(request_id: str, cancellation: RequestCancel, user=Depe
         await db.notifications.insert_one(notif)
         await send_email_notification(
             approver_user.get("email", ""),
-            f"Request Cancelled: {req['request_number']}",
+            f"Request Cancelled: {request_display_name} - {req['request_number']}",
             render_request_email(
                 heading="Request Cancelled",
                 request_id=request_id,
@@ -609,7 +609,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
             await db.notifications.insert_one(notif)
             await send_email_notification(
                 approver_user.get("email", ""),
-                f"Request Completed: {req['request_number']}",
+                f"Request Completed: {req['request_number']} - {request_display_name}",
                 render_request_email(
                     heading="Request Completed",
                     request_id=request_id,
@@ -645,7 +645,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
         await db.notifications.insert_one(requester_notif)
         await send_email_notification(
             req.get("requester_email", ""),
-            f"Request Approved: {req['request_number']}",
+            f"Request Approved: {req['request_number']} - {request_display_name}",
             render_request_email(
                 heading="Request Fulfilled",
                 request_id=request_id,
@@ -726,7 +726,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
         await db.notifications.insert_one(notif)
         await send_email_notification(
             req.get("requester_email", ""),
-            f"Request Rejected: {req['request_number']}",
+            f"Request Rejected: {request_display_name} - {req['request_number']}",
             render_request_email(
                 heading="Request Rejected",
                 request_id=request_id,
@@ -796,7 +796,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                     await db.notifications.insert_one(notif)
                     await send_email_notification(
                         next_approver.get("email", ""),
-                        f"Approval Required (Step {next_step}): {req['request_number']}",
+                        f"Approval Required (Step {next_step}): {request_display_name} - {req['request_number']}",
                         render_request_email(
                             heading="Approval Required",
                             request_id=request_id,
@@ -853,7 +853,7 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
                     await db.notifications.insert_one(notif)
                     await send_email_notification(
                         custodian_user.get("email", ""),
-                        f"Fulfillment Required: {req['request_number']}",
+                        f"Fulfillment Required: {request_display_name} - {req['request_number']}",
                         render_request_email(
                             heading="Request Ready for Fulfillment",
                             request_id=request_id,
