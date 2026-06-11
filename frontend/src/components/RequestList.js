@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Popover,
   PopoverContent,
@@ -12,9 +11,10 @@ import {
   FileText,
   AlertTriangle,
   CalendarDays,
-  Files,
   UserRound,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { differenceInHours, formatDistanceToNow } from "date-fns";
 import { getRequestStatusConfig } from "./requestStatus";
@@ -102,9 +102,10 @@ export default function RequestList({
   searchQuery,
   onSearchChange,
   loading,
-  loadingMore = false,
-  hasMore = false,
-  onLoadMore,
+  // Pagination props (replaces loadingMore / hasMore / onLoadMore)
+  currentPage = 1,
+  totalPages = 1,
+  onPageChange,
   templates = [],
   dateFilter = EMPTY_DATE_FILTER,
   onDateFilterChange,
@@ -113,86 +114,45 @@ export default function RequestList({
   users = [],
   userFilter = "",
   onUserFilterChange,
+  // Role-gated visibility
+  showUserFilter = false,
 }) {
   const scrollAreaRef = useRef(null);
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const showInitialLoading = loading && requests.length === 0;
   const dateFilterActive = Boolean(dateFilter?.from || dateFilter?.to);
-  const formFilterActive = Boolean(formFilter);
   const userFilterActive = Boolean(userFilter);
-  const selectedTemplate = templates.find((template) => template.id === formFilter);
+
   const formOptions = useMemo(
     () => templates.filter((template) => template.is_active !== false),
     [templates],
   );
+
+  // Users come entirely from the users prop — no request-scanning fallback.
   const allUserOptions = useMemo(() => {
-    const byId = new Map();
-
-    users.forEach((item) => {
-      if (item?.id) {
-        byId.set(item.id, item);
-      }
-    });
-
-    requests.forEach((request) => {
-      if (request.requester_id && !byId.has(request.requester_id)) {
-        byId.set(request.requester_id, {
-          id: request.requester_id,
-          name: request.requester_name || "Unknown user",
-        });
-      }
-    });
-
-    return Array.from(byId.values())
-      .filter((item) => item.is_active !== false)
+    return [...users]
+      .filter((item) => item?.id && item.is_active !== false)
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  }, [requests, users]);
+  }, [users]);
+
   const selectedUser = allUserOptions.find((item) => item.id === userFilter);
+
   const userOptions = useMemo(() => {
     const normalizedSearch = userSearchQuery.trim().toLowerCase();
-    return allUserOptions
-      .filter((item) => {
-        if (!normalizedSearch) return true;
-        return [item.name, item.email]
-          .filter(Boolean)
-          .some((value) => value.toLowerCase().includes(normalizedSearch));
-      });
+    if (!normalizedSearch) return allUserOptions;
+    return allUserOptions.filter((item) =>
+      [item.name, item.email]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(normalizedSearch)),
+    );
   }, [allUserOptions, userSearchQuery]);
 
-  const loadMoreRequests = useCallback(() => {
-    if (loading || loadingMore || !hasMore || !onLoadMore) {
-      return;
-    }
-
-    onLoadMore();
-  }, [hasMore, loading, loadingMore, onLoadMore]);
-
-  const handleScroll = useCallback((event) => {
-    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
-    const reachedBottom = scrollHeight - scrollTop - clientHeight <= 24;
-
-    if (reachedBottom) {
-      loadMoreRequests();
-    }
-  }, [loadMoreRequests]);
-
-  useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
-
-    if (!viewport) {
-      return undefined;
-    }
-
-    viewport.addEventListener("scroll", handleScroll);
-
-    return () => {
-      viewport.removeEventListener("scroll", handleScroll);
-    };
-  }, [handleScroll]);
+  const hasPrev = currentPage > 1;
+  const hasNext = currentPage < totalPages;
 
   return (
     <div className="h-full flex flex-col min-h-0 min-w-0" data-testid="request-list">
-      {/* Search bar */}
+      {/* Search + filter bar */}
       <div className="p-3 border-b border-slate-200">
         <div className="flex items-center gap-2">
           <div className="relative flex-1 min-w-0">
@@ -205,6 +165,8 @@ export default function RequestList({
               className="pl-9 h-9 text-sm max-[420px]:text-[13px] bg-white border-slate-200"
             />
           </div>
+
+          {/* Date filter */}
           <Popover>
             <PopoverTrigger asChild>
               <button
@@ -268,7 +230,7 @@ export default function RequestList({
                           from: e.target.value,
                         })
                       }
-                      className="h-8 text-xs "
+                      className="h-8 text-xs"
                     />
                   </div>
                   <div className="space-y-1 w-[150px]">
@@ -302,136 +264,88 @@ export default function RequestList({
               </div>
             </PopoverContent>
           </Popover>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                data-testid="user-filter-trigger"
-                title={selectedUser?.name || "Any user"}
-                className={`relative h-9 w-9 rounded-md border flex items-center justify-center transition-colors ${
-                  userFilterActive
-                    ? "border-blue-200 bg-blue-50 text-blue-700"
-                    : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                }`}
-              >
-                <UserRound className="w-4 h-4" />
-                {userFilterActive && (
-                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 p-2">
-              <div className="px-1.5 pb-2 pt-1">
-                <p className="text-xs font-semibold text-slate-700">User filter</p>
-                <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                  {selectedUser?.name || "Any user"}
-                </p>
-              </div>
-              <div className="relative mb-2">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                <Input
-                  data-testid="user-filter-search"
-                  placeholder="Search users..."
-                  value={userSearchQuery}
-                  onChange={(e) => setUserSearchQuery(e.target.value)}
-                  className="h-8 pl-8 text-xs"
-                />
-              </div>
-              <div className="max-h-64 overflow-y-auto pr-1">
+
+          {/* User filter — only rendered for roles that can see other users' requests */}
+          {showUserFilter && (
+            <Popover>
+              <PopoverTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => onUserFilterChange?.("")}
-                  className={`w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
-                    !userFilter
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-slate-600 hover:bg-slate-50"
+                  data-testid="user-filter-trigger"
+                  title={selectedUser?.name || "Any user"}
+                  className={`relative h-9 w-9 rounded-md border flex items-center justify-center transition-colors ${
+                    userFilterActive
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
                   }`}
                 >
-                  All users
+                  <UserRound className="w-4 h-4" />
+                  {userFilterActive && (
+                    <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
+                  )}
                 </button>
-                {userOptions.length === 0 ? (
-                  <div className="px-2 py-4 text-center text-xs text-slate-400">
-                    No users found
-                  </div>
-                ) : (
-                  userOptions.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => onUserFilterChange?.(item.id)}
-                      className={`mt-1 w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
-                        userFilter === item.id
-                          ? "bg-blue-50 text-blue-700"
-                          : "text-slate-600 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span className="block truncate">{item.name}</span>
-                      {item.email && (
-                        <span className="mt-0.5 block truncate text-[11px] text-slate-400">
-                          {item.email}
-                        </span>
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
-          {/* <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                data-testid="form-filter-trigger"
-                title={selectedTemplate?.name || "Any form"}
-                className={`relative h-9 w-9 rounded-md border flex items-center justify-center transition-colors ${
-                  formFilterActive
-                    ? "border-blue-200 bg-blue-50 text-blue-700"
-                    : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                }`}
-              >
-                <Files className="w-4 h-4" />
-                {formFilterActive && (
-                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 p-2">
-              <div className="px-1.5 pb-2 pt-1">
-                <p className="text-xs font-semibold text-slate-700">Form filter</p>
-                <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                  {selectedTemplate?.name || "Any form"}
-                </p>
-              </div>
-              <div className="max-h-64 overflow-y-auto pr-1">
-                <button
-                  type="button"
-                  onClick={() => onFormFilterChange?.("")}
-                  className={`w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
-                    !formFilter
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  All forms
-                </button>
-                {formOptions.map((template) => (
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-2">
+                <div className="px-1.5 pb-2 pt-1">
+                  <p className="text-xs font-semibold text-slate-700">User filter</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                    {selectedUser?.name || "Any user"}
+                  </p>
+                </div>
+                <div className="relative mb-2">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <Input
+                    data-testid="user-filter-search"
+                    placeholder="Search users..."
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    className="h-8 pl-8 text-xs"
+                  />
+                </div>
+                <div className="max-h-64 overflow-y-auto pr-1">
                   <button
-                    key={template.id}
                     type="button"
-                    onClick={() => onFormFilterChange?.(template.id)}
-                    className={`mt-1 w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
-                      formFilter === template.id
+                    onClick={() => onUserFilterChange?.("")}
+                    className={`w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
+                      !userFilter
                         ? "bg-blue-50 text-blue-700"
                         : "text-slate-600 hover:bg-slate-50"
                     }`}
                   >
-                    <span className="block truncate">{template.name}</span>
+                    All users
                   </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover> */}
+                  {userOptions.length === 0 ? (
+                    <div className="px-2 py-4 text-center text-xs text-slate-400">
+                      No users found
+                    </div>
+                  ) : (
+                    userOptions.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => onUserFilterChange?.(item.id)}
+                        className={`mt-1 w-full rounded-md px-2 py-2 text-left text-xs transition-colors ${
+                          userFilter === item.id
+                            ? "bg-blue-50 text-blue-700"
+                            : "text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className="block truncate">{item.name}</span>
+                        {item.email && (
+                          <span className="mt-0.5 block truncate text-[11px] text-slate-400">
+                            {item.email}
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
+
+        {/* Loading bar */}
         <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-slate-100">
           <div
             className={`h-full rounded-full bg-blue-500 transition-all duration-300 ${
@@ -471,7 +385,9 @@ export default function RequestList({
               const statusCfg = getRequestStatusConfig(req);
               const isActive = selectedRequest?.id === req.id;
               const ageIndicator = getRequestAgeIndicator(req);
-              const timeAgo = req.created_at ? formatDistanceToNow(new Date(req.created_at), { addSuffix: true }) : "";
+              const timeAgo = req.created_at
+                ? formatDistanceToNow(new Date(req.created_at), { addSuffix: true })
+                : "";
 
               return (
                 <div
@@ -482,9 +398,11 @@ export default function RequestList({
                   style={{ animationDelay: `${idx * 30}ms` }}
                 >
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <div className="flex-1 min-w-0 ">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[10px] max-[420px]:text-[9px] text-slate-400">{req.request_number}</span>
+                        <span className="font-mono text-[10px] max-[420px]:text-[9px] text-slate-400">
+                          {req.request_number}
+                        </span>
                         {ageIndicator && (
                           <AlertTriangle className={`w-3 h-3 ${ageIndicator.iconClassName}`} />
                         )}
@@ -501,7 +419,9 @@ export default function RequestList({
                           {ageIndicator.label}
                         </span>
                       )}
-                      <span className={`text-[10px] max-[420px]:text-[9px] px-1.5 py-0.5 rounded border font-medium ${statusCfg.cls}`}>
+                      <span
+                        className={`text-[10px] max-[420px]:text-[9px] px-1.5 py-0.5 rounded border font-medium ${statusCfg.cls}`}
+                      >
                         {statusCfg.label}
                       </span>
                     </div>
@@ -520,21 +440,40 @@ export default function RequestList({
                 </div>
               );
             })}
-            {loadingMore && (
-              <div className="px-4 py-3 border-b border-slate-100">
-                <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                  <Skeleton className="h-3 w-20" />
-                  <Skeleton className="mt-3 h-4 w-3/4" />
-                  <div className="mt-4 flex items-center justify-between gap-3">
-                    <Skeleton className="h-3 w-24" />
-                    <Skeleton className="h-3 w-16" />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </ScrollArea>
+
+      {/* Pagination footer — only shown when there is more than one page */}
+      {totalPages > 1 && (
+        <div className="flex-shrink-0 flex items-center justify-between gap-2 px-3 py-2 border-t border-slate-200 bg-white">
+          <button
+            type="button"
+            data-testid="pagination-prev"
+            onClick={() => onPageChange?.(currentPage - 1)}
+            disabled={!hasPrev || loading}
+            className="flex items-center gap-1 h-7 px-2 rounded-md border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+            Prev
+          </button>
+
+          <span className="text-xs text-slate-500 tabular-nums">
+            Page {currentPage} of {totalPages}
+          </span>
+
+          <button
+            type="button"
+            data-testid="pagination-next"
+            onClick={() => onPageChange?.(currentPage + 1)}
+            disabled={!hasNext || loading}
+            className="flex items-center gap-1 h-7 px-2 rounded-md border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            Next
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

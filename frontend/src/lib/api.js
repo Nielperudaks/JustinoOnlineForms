@@ -54,6 +54,7 @@ export const deleteTemplate = (id) => api.delete(`/form-templates/${id}`);
 
 // Requests
 export const listRequests = (params) => api.get('/requests', { params });
+export const listRequesters = () => api.get('/requests/requesters');
 export const getRequest = (id) => api.get(`/requests/${id}`);
 export const createRequest = (data) => api.post('/requests', data);
 export const actionRequest = (id, data) => api.post(`/requests/${id}/action`, data);

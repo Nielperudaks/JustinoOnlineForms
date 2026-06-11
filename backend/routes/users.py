@@ -4,7 +4,7 @@ from typing import Optional, List
 from utils.helpers import db, hash_password, require_admin, require_form_manager, get_current_user
 from utils.cache import invalidate_metadata_cache, invalidate_stats_cache, metadata_cache
 from utils.realtime_events import metadata_changed_payload
-from utils.roles import APPROVER_ROLES, FORM_MANAGER_ROLES, SUPER_ADMIN
+from utils.roles import APPROVER_ROLES, FORM_MANAGER_ROLES, REQUESTOR_ROLES, SUPER_ADMIN
 from realtime import manager
 import uuid
 from datetime import datetime, timezone
@@ -203,6 +203,40 @@ async def _list_custodians_uncached(department_id, user):
         query["department_id"] = department_id
     custodians = await db.users.find(query, {"_id": 0, "password_hash": 0}).to_list(500)
     return custodians
+
+
+@users_router.get("/requestors")
+async def list_requestors(department_id: Optional[str] = None, user=Depends(get_current_user)):
+    """Return users who can submit requests, scoped by department for non-admins.
+
+    This endpoint is open to any authenticated user so that approvers and
+    other roles can populate the requester filter on the dashboard without
+    needing manager-level permissions.
+    """
+    cache_key = (user.get("role"), user.get("department_id", ""), department_id or "")
+    return await metadata_cache.get_or_set(
+        "requestors",
+        cache_key,
+        lambda: _list_requestors_uncached(department_id, user),
+    )
+
+
+async def _list_requestors_uncached(department_id, user):
+    query = {"role": {"$in": list(REQUESTOR_ROLES)}, "is_active": True}
+    if user.get("role") == SUPER_ADMIN:
+        # Super admin can optionally scope by department via query param.
+        if department_id:
+            query["department_id"] = department_id
+    elif user.get("role") in FORM_MANAGER_ROLES:
+        # Managers are always scoped to their own department.
+        query["department_id"] = user.get("department_id")
+    else:
+        # Approvers, supervisors, executives etc. see requestors in their
+        # own department only.
+        if user.get("department_id"):
+            query["department_id"] = user.get("department_id")
+    requestors = await db.users.find(query, {"_id": 0, "password_hash": 0}).to_list(500)
+    return requestors
 
 
 @users_router.put("/{user_id}/password")

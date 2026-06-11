@@ -213,6 +213,44 @@ async def list_requests(
     return {"items": reqs, "total": total, "page": page, "limit": limit, "offset": skip}
 
 
+@requests_router.get("/requesters")
+async def list_request_requesters(user=Depends(get_current_user)):
+    """Return the distinct set of requesters visible to the current user.
+
+    Uses the same scope rules as list_requests so the filter options always
+    match exactly what the user can actually see — no department limitation,
+    no role-based user-table access required.
+    """
+    role = user.get("role", "")
+
+    if role == SUPER_ADMIN:
+        scope_query = {}
+    else:
+        scope_options = [
+            {"requester_id": user["id"]},
+            {"approvals": {"$elemMatch": {"approver_id": user["id"]}}},
+            {"custodian.user_id": user["id"]},
+        ]
+        if role in FORM_MANAGER_ROLES and user.get("department_id"):
+            scope_options.append({"department_id": user["department_id"]})
+        scope_query = {"$or": scope_options}
+
+    pipeline = [
+        {"$match": scope_query},
+        {
+            "$group": {
+                "_id": "$requester_id",
+                "name": {"$first": "$requester_name"},
+            }
+        },
+        {"$project": {"_id": 0, "id": "$_id", "name": 1}},
+        {"$sort": {"name": 1}},
+    ]
+
+    requesters = await db.requests.aggregate(pipeline).to_list(500)
+    return requesters
+
+
 @requests_router.get("/{request_id}")
 async def get_request(request_id: str, user=Depends(get_current_user)):
     req = await db.requests.find_one({"id": request_id}, {"_id": 0})

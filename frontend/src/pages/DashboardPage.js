@@ -7,7 +7,7 @@ import { useReactiveRefresh } from "@/hooks/useReactiveRefresh";
 
 import {
   listRequests,
-  listUsers,
+  listRequesters,
   listDepartments,
   listTemplates,
   getDashboardStats,
@@ -32,11 +32,15 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { getSettingsMenuItems } from "@/components/settingsMenu";
-import { isRequestorRole, isApproverRole, isSuperAdminRole, isManagerRole } from "@/lib/roles";
+import {
+  isRequestorRole,
+  isApproverRole,
+  isSuperAdminRole,
+  isManagerRole,
+} from "@/lib/roles";
 import { Plus, Bell, Settings, LogOut, Menu, KeyRound, ClipboardList } from "lucide-react";
 
-const INITIAL_REQUEST_PAGE_SIZE = 12;
-const REQUESTS_LOAD_MORE_SIZE = 5;
+const REQUEST_PAGE_SIZE = 15;
 const EMPTY_REQUEST_DATE_FILTER = { preset: "all", from: "", to: "" };
 
 export default function DashboardPage() {
@@ -57,6 +61,15 @@ export default function DashboardPage() {
   const [activeFilter, setActiveFilter] = useState("all");
 
   const canCreateRequest = isRequestorRole(user?.role);
+
+  // User filter is only shown to roles that can see other users' requests.
+  // Pure requestors only ever see their own requests so the filter is pointless
+  // for them. Approvers, managers, and super admins all see a broader scope.
+  const showUserFilter =
+    isSuperAdminRole(user?.role) ||
+    isManagerRole(user?.role) ||
+    isApproverRole(user?.role);
+
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestDetailLoading, setRequestDetailLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,12 +84,14 @@ export default function DashboardPage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadingMoreRequests, setLoadingMoreRequests] = useState(false);
-  const [hasMoreRequests, setHasMoreRequests] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [listWidth, setListWidth] = useState(480);
   const minListWidth = 240;
-  const maxListWidth = 580;
+  const maxListWidth = 600;
   const isResizingRef = useRef(false);
 
   const handleResizeStart = useCallback(
@@ -125,58 +140,56 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const fetchRequests = useCallback(async ({ offset = 0, append = false } = {}) => {
-    if (append) {
-      setLoadingMoreRequests(true);
-    } else {
+  // fetchRequests always fetches the specified page (or stays on currentPage
+  // when called without an argument, e.g. from WS/poll handlers). It never
+  // appends — each call is a clean replacement of the visible page.
+  const fetchRequests = useCallback(
+    async (page = null) => {
+      const targetPage = page ?? currentPage;
       setLoading(true);
-    }
 
-    try {
-      const limit = offset === 0 ? INITIAL_REQUEST_PAGE_SIZE : REQUESTS_LOAD_MORE_SIZE;
-      const params = { offset, limit };
-      const isSuperAdmin = isSuperAdminRole(user?.role);
-      // Only super admin can filter by department
-      if (isSuperAdmin && selectedDept) params.department_id = selectedDept;
-      if (activeFilter === "my_requests") params.my_requests = true;
-      if (activeFilter === "my_approvals") params.my_approvals = true;
-      if (activeFilter === "pending") params.status = "pending";
-      if (activeFilter === "custodian_pending") params.custodian_status = "pending";
-      if (activeFilter === "approved") params.status = "approved";
-      if (activeFilter === "custodian_fulfilled") params.custodian_status = "fulfilled";
-      if (activeFilter === "rejected") params.status = "rejected";
-      if (activeFilter === "cancelled") params.status = "cancelled";
-      if (searchQuery) params.search = searchQuery;
-      if (requestFormFilter) params.form_template_id = requestFormFilter;
-      if (requestUserFilter) params.requester_id = requestUserFilter;
-      if (requestDateFilter.from) params.date_from = requestDateFilter.from;
-      if (requestDateFilter.to) params.date_to = requestDateFilter.to;
+      try {
+        const offset = (targetPage - 1) * REQUEST_PAGE_SIZE;
+        const params = { offset, limit: REQUEST_PAGE_SIZE };
 
-      const res = await listRequests(params);
-      let nextLoadedCount = res.data.items.length;
+        const isSuperAdmin = isSuperAdminRole(user?.role);
+        if (isSuperAdmin && selectedDept) params.department_id = selectedDept;
+        if (activeFilter === "my_requests") params.my_requests = true;
+        if (activeFilter === "my_approvals") params.my_approvals = true;
+        if (activeFilter === "pending") params.status = "pending";
+        if (activeFilter === "custodian_pending") params.custodian_status = "pending";
+        if (activeFilter === "approved") params.status = "approved";
+        if (activeFilter === "custodian_fulfilled") params.custodian_status = "fulfilled";
+        if (activeFilter === "rejected") params.status = "rejected";
+        if (activeFilter === "cancelled") params.status = "cancelled";
+        if (searchQuery) params.search = searchQuery;
+        if (requestFormFilter) params.form_template_id = requestFormFilter;
+        if (requestUserFilter) params.requester_id = requestUserFilter;
+        if (requestDateFilter.from) params.date_from = requestDateFilter.from;
+        if (requestDateFilter.to) params.date_to = requestDateFilter.to;
 
-      setRequests((prev) => {
-        if (!append) {
-          return res.data.items;
-        }
-
-        const seenIds = new Set(prev.map((item) => item.id));
-        const nextItems = res.data.items.filter((item) => !seenIds.has(item.id));
-        nextLoadedCount = prev.length + nextItems.length;
-        return [...prev, ...nextItems];
-      });
-      setTotalRequests(res.data.total);
-      setHasMoreRequests(nextLoadedCount < res.data.total);
-    } catch (err) {
-      console.error("Fetch requests error:", err);
-    } finally {
-      if (append) {
-        setLoadingMoreRequests(false);
-      } else {
+        const res = await listRequests(params);
+        setRequests(res.data.items);
+        setTotalRequests(res.data.total);
+        setTotalPages(Math.max(1, Math.ceil(res.data.total / REQUEST_PAGE_SIZE)));
+      } catch (err) {
+        console.error("Fetch requests error:", err);
+      } finally {
         setLoading(false);
       }
-    }
-  }, [user?.role, selectedDept, activeFilter, searchQuery, requestFormFilter, requestUserFilter, requestDateFilter]);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      user?.role,
+      selectedDept,
+      activeFilter,
+      searchQuery,
+      requestFormFilter,
+      requestUserFilter,
+      requestDateFilter,
+      currentPage,
+    ],
+  );
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -188,23 +201,68 @@ export default function DashboardPage() {
     }
   }, [selectedDept]);
 
-  const fetchUsers = useCallback(async () => {
-    if (!isSuperAdminRole(user?.role) && !isManagerRole(user?.role)) {
+  const fetchRequesters = useCallback(async () => {
+    // Fetch the distinct set of requesters visible to the current user.
+    // The backend applies the same scope rules as list_requests, so the filter
+    // options always match exactly what the user can actually see — regardless
+    // of department or role. Only called when the user filter is visible.
+    if (!showUserFilter) {
       setUsers([]);
       return;
     }
 
     try {
-      const params = selectedDept ? { department_id: selectedDept } : {};
-      const res = await listUsers(params);
+      const res = await listRequesters();
       setUsers(res.data);
     } catch (err) {
-      console.error("Fetch users error:", err);
+      console.error("Fetch requesters error:", err);
       setUsers([]);
     }
-  }, [selectedDept, user?.role]);
+  }, [showUserFilter]);
 
-  // Reset activeFilter if current filter is not allowed for user's role
+  // Reset to page 1 whenever any filter or search changes so results are
+  // consistent and the user doesn't land on a now-empty page.
+  const resetToFirstPage = useCallback(() => {
+    setCurrentPage(1);
+  }, []);
+
+  // Wrap each filter setter so it always resets pagination.
+  const handleSearchChange = useCallback((value) => {
+    setSearchQuery(value);
+    resetToFirstPage();
+  }, [resetToFirstPage]);
+
+  const handleDateFilterChange = useCallback((value) => {
+    setRequestDateFilter(value);
+    resetToFirstPage();
+  }, [resetToFirstPage]);
+
+  const handleFormFilterChange = useCallback((value) => {
+    setRequestFormFilter(value);
+    resetToFirstPage();
+  }, [resetToFirstPage]);
+
+  const handleUserFilterChange = useCallback((value) => {
+    setRequestUserFilter(value);
+    resetToFirstPage();
+  }, [resetToFirstPage]);
+
+  const handleSidebarDeptChange = useCallback((dept) => {
+    setSelectedDept(dept);
+    resetToFirstPage();
+  }, [resetToFirstPage]);
+
+  const handleSidebarFilterChange = useCallback((filter) => {
+    setActiveFilter(filter);
+    resetToFirstPage();
+  }, [resetToFirstPage]);
+
+  // Navigate between pages explicitly.
+  const handlePageChange = useCallback((page) => {
+    setCurrentPage(page);
+  }, []);
+
+  // Reset activeFilter if current filter is not allowed for user's role.
   useEffect(() => {
     if (!user?.role) return;
     const role = user.role;
@@ -217,15 +275,20 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // fetchRequests depends on currentPage so changing the page triggers a
+  // fresh fetch automatically via this single effect.
   useEffect(() => {
-    fetchRequests({ offset: 0, append: false });
+    fetchRequests();
   }, [fetchRequests]);
+
   useEffect(() => {
     fetchTemplates();
   }, [fetchTemplates]);
+
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    fetchRequesters();
+  }, [fetchRequesters]);
 
   useLiveUpdates({
     enabled: !!user,
@@ -237,11 +300,12 @@ export default function DashboardPage() {
         case "REQUEST_REJECTED":
         case "REQUEST_CANCELLED":
         case "REQUEST_STATE_CHANGED": {
-          // Refresh request lists and stats
+          // Re-fetch the page the user is currently viewing — no scroll jump,
+          // no offset reset, no list replacement visible to the user.
           fetchRequests();
           fetchData();
+          fetchRequesters();
 
-          // If the currently opened request changed, refresh it
           if (selectedRequest?.id === payload?.request_id) {
             getRequest(payload.request_id)
               .then((res) => setSelectedRequest(res.data))
@@ -256,7 +320,7 @@ export default function DashboardPage() {
               setNotifications(res.data.items);
               setUnreadCount(res.data.unread_count);
             });
-            fetchData(); // unread badge in dashboard stats
+            fetchData();
           }
           break;
         }
@@ -281,14 +345,18 @@ export default function DashboardPage() {
 
   useReactiveRefresh(
     () => {
+      // Poll refresh re-fetches the current page only — no glitch.
       fetchRequests();
       fetchData();
+      fetchRequesters();
 
       if (selectedRequest?.id) {
         return getRequest(selectedRequest.id)
-          .then((res) => setSelectedRequest((prev) => (
-            prev?.id === selectedRequest.id ? res.data : prev
-          )))
+          .then((res) =>
+            setSelectedRequest((prev) =>
+              prev?.id === selectedRequest.id ? res.data : prev,
+            ),
+          )
           .catch(() => {});
       }
 
@@ -298,7 +366,7 @@ export default function DashboardPage() {
       enabled: !!user,
       intervalMs: 30000,
       refetchOnFocus: true,
-    }
+    },
   );
 
   const handleCreateRequest = async (data) => {
@@ -307,7 +375,8 @@ export default function DashboardPage() {
       toast.success("Request submitted successfully");
       setSelectedRequest(res.data);
       setShowCreateDialog(false);
-      fetchRequests();
+      // New request lands at the top — go back to page 1 so the user sees it.
+      setCurrentPage(1);
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to create request");
@@ -317,8 +386,7 @@ export default function DashboardPage() {
   const handleAction = async (requestId, action, comments) => {
     try {
       const res = await actionRequest(requestId, { action, comments });
-      const actionLabel =
-        action === "fulfill" ? "fulfilled" : `${action}d`;
+      const actionLabel = action === "fulfill" ? "fulfilled" : `${action}d`;
       toast.success(`Request ${actionLabel} successfully`);
       setSelectedRequest(res.data);
       fetchRequests();
@@ -339,9 +407,7 @@ export default function DashboardPage() {
       fetchRequests();
       fetchData();
     } catch (err) {
-      toast.error(
-        err.response?.data?.detail || "Failed to cancel request",
-      );
+      toast.error(err.response?.data?.detail || "Failed to cancel request");
     }
   };
 
@@ -406,15 +472,29 @@ export default function DashboardPage() {
     }
   };
 
-  const handleLoadMoreRequests = useCallback(() => {
-    if (loading || loadingMoreRequests || !hasMoreRequests) {
-      return;
-    }
-
-    fetchRequests({ offset: requests.length, append: true });
-  }, [fetchRequests, hasMoreRequests, loading, loadingMoreRequests, requests.length]);
-
   const isShowingMobileDetail = !!selectedRequest || requestDetailLoading;
+
+  // Shared props for both the mobile and desktop RequestList instances.
+  const requestListProps = {
+    requests,
+    selectedRequest,
+    onSelect: handleSelectRequest,
+    searchQuery,
+    onSearchChange: handleSearchChange,
+    templates,
+    dateFilter: requestDateFilter,
+    onDateFilterChange: handleDateFilterChange,
+    formFilter: requestFormFilter,
+    onFormFilterChange: handleFormFilterChange,
+    users,
+    userFilter: requestUserFilter,
+    onUserFilterChange: handleUserFilterChange,
+    showUserFilter,
+    loading,
+    currentPage,
+    totalPages,
+    onPageChange: handlePageChange,
+  };
 
   return (
     <div
@@ -434,12 +514,12 @@ export default function DashboardPage() {
               departments={departments}
               selectedDept={selectedDept}
               setSelectedDept={(d) => {
-                setSelectedDept(d);
+                handleSidebarDeptChange(d);
                 setShowMobileSidebar(false);
               }}
               activeFilter={activeFilter}
               setActiveFilter={(f) => {
-                setActiveFilter(f);
+                handleSidebarFilterChange(f);
                 setShowMobileSidebar(false);
               }}
               stats={stats}
@@ -455,9 +535,9 @@ export default function DashboardPage() {
           user={user}
           departments={departments}
           selectedDept={selectedDept}
-          setSelectedDept={setSelectedDept}
+          setSelectedDept={handleSidebarDeptChange}
           activeFilter={activeFilter}
-          setActiveFilter={setActiveFilter}
+          setActiveFilter={handleSidebarFilterChange}
           stats={stats}
         />
       </div>
@@ -524,9 +604,7 @@ export default function DashboardPage() {
                   onClose={() => setShowNotifications(false)}
                   onSelectRequest={(notif) => {
                     if (notif.request_id) {
-                      const req = requests.find(
-                        (r) => r.id === notif.request_id,
-                      );
+                      const req = requests.find((r) => r.id === notif.request_id);
                       if (req) handleSelectRequest(req);
                     }
                     setShowNotifications(false);
@@ -556,7 +634,8 @@ export default function DashboardPage() {
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-56 p-1.5">
                   {settingsItems.map((item) => {
-                    const ItemIcon = item.key === "change_password" ? KeyRound : ClipboardList;
+                    const ItemIcon =
+                      item.key === "change_password" ? KeyRound : ClipboardList;
                     return (
                       <button
                         key={item.key}
@@ -584,6 +663,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Mobile: single-panel (list or detail) */}
         <div className="flex-1 min-h-0 overflow-hidden lg:hidden bg-slate-50/40">
           {isShowingMobileDetail ? (
             <div className="h-full min-w-0 bg-white">
@@ -601,60 +681,24 @@ export default function DashboardPage() {
               />
             </div>
           ) : (
-            <div className="h-full min-w-0  bg-white">
-              <RequestList
-                requests={requests}
-                selectedRequest={selectedRequest}
-                onSelect={handleSelectRequest}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-                templates={templates}
-                dateFilter={requestDateFilter}
-                onDateFilterChange={setRequestDateFilter}
-                formFilter={requestFormFilter}
-                onFormFilterChange={setRequestFormFilter}
-                users={users}
-                userFilter={requestUserFilter}
-                onUserFilterChange={setRequestUserFilter}
-                loading={loading}
-                loadingMore={loadingMoreRequests}
-                hasMore={hasMoreRequests}
-                onLoadMore={handleLoadMoreRequests}
-              />
+            <div className="h-full min-w-0 bg-white">
+              <RequestList {...requestListProps} />
             </div>
           )}
         </div>
 
-        {/* Desktop 2-panel: list + detail */}
+        {/* Desktop: resizable 2-panel (list + detail) */}
         <div className="hidden lg:flex flex-1 overflow-hidden min-h-0">
           <div
             className="border-r border-slate-200 bg-slate-50/50 flex-shrink-0 overflow-hidden flex flex-col min-w-0 max-w-[500px]"
             style={{ width: listWidth, minWidth: minListWidth }}
           >
-            <RequestList
-              requests={requests}
-              selectedRequest={selectedRequest}
-              onSelect={handleSelectRequest}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              templates={templates}
-              dateFilter={requestDateFilter}
-              onDateFilterChange={setRequestDateFilter}
-              formFilter={requestFormFilter}
-              onFormFilterChange={setRequestFormFilter}
-              users={users}
-              userFilter={requestUserFilter}
-              onUserFilterChange={setRequestUserFilter}
-              loading={loading}
-              loadingMore={loadingMoreRequests}
-              hasMore={hasMoreRequests}
-              onLoadMore={handleLoadMoreRequests}
-            />
+            <RequestList {...requestListProps} />
           </div>
           <div
             role="separator"
             aria-label="Resize panels"
-            className=" flex-shrink-0 bg-slate-200 hover:bg-blue-400 active:bg-blue-500 cursor-col-resize transition-colors flex items-center justify-center group"
+            className="flex-shrink-0 bg-slate-200 hover:bg-blue-400 active:bg-blue-500 cursor-col-resize transition-colors flex items-center justify-center group"
             onMouseDown={handleResizeStart}
           >
             <div className="w-0.5 h-8 bg-slate-400 group-hover:bg-blue-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
