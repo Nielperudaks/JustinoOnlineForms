@@ -603,13 +603,91 @@ async def action_request(request_id: str, action: RequestAction, user=Depends(ge
     if action.action in ("approve", "reject") and role not in APPROVER_ROLES:
         raise HTTPException(status_code=403, detail="Only approvers can approve or reject requests")
 
-    if action.action == "fulfill":
+    # AFTER
+    if action.action in ("fulfill", "custodian_reject"):
         if not custodian or custodian.get("user_id") != user["id"]:
             raise HTTPException(status_code=403, detail="You are not the assigned custodian for this request")
         if req["status"] != "pending" or custodian.get("status") != "pending":
             raise HTTPException(status_code=400, detail="This request is not awaiting custodian confirmation")
 
         now = datetime.now(timezone.utc).isoformat()
+
+        if action.action == "custodian_reject":
+            if not (action.comments or "").strip():
+                raise HTTPException(status_code=400, detail="A rejection reason is required")
+
+            custodian["status"] = "rejected"
+            custodian["comments"] = action.comments.strip()
+            custodian["acted_at"] = now
+
+            await db.requests.update_one(
+                {"id": request_id},
+                {"$set": {
+                    "custodian": custodian,
+                    "status": "rejected",
+                    "updated_at": now,
+                }},
+            )
+            invalidate_stats_cache()
+
+            # Notify requester
+            notif = {
+                "id": str(uuid.uuid4()),
+                "user_id": req["requester_id"],
+                "request_id": request_id,
+                "request_number": req["request_number"],
+                "message": f"Your request '{request_display_name}' was rejected by custodian {user['name']}",
+                "type": "request_rejected",
+                "is_read": False,
+                "created_at": now,
+            }
+            await db.notifications.insert_one(notif)
+            await send_email_notification(
+                req.get("requester_email", ""),
+                f"Request Rejected: {request_display_name} - {req['request_number']}",
+                render_request_email(
+                    heading="Request Rejected by Custodian",
+                    request_id=request_id,
+                    request_number=req["request_number"],
+                    request_title=request_display_name,
+                    intro="Your request was rejected during custodian review.",
+                    requester_name=req.get("requester_name", ""),
+                    actor_name=user["name"],
+                    status_label="Rejected by custodian",
+                    comments=custodian["comments"],
+                    action_label="View request",
+                ),
+            )
+            await manager.broadcast(
+                event="NOTIFICATION_CREATED",
+                payload={
+                    "user_id": notif["user_id"],
+                    "notification_id": notif["id"],
+                    "type": notif["type"],
+                },
+            )
+            await manager.broadcast(
+                event="REQUEST_REJECTED",
+                payload={
+                    "request_id": request_id,
+                    "request_number": req["request_number"],
+                    "acted_by": user["id"],
+                    "department_id": req["department_id"],
+                    "status": "rejected",
+                },
+            )
+            updated = await db.requests.find_one({"id": request_id}, {"_id": 0})
+            await manager.broadcast(
+                event="REQUEST_STATE_CHANGED",
+                payload={
+                    "request_id": updated["id"],
+                    "status": updated["status"],
+                    "current_step": updated.get("current_approval_step", 0),
+                },
+            )
+            return updated
+
+        # --- fulfill path continues below ---
         custodian["status"] = "fulfilled"
         custodian["comments"] = action.comments or ""
         custodian["acted_at"] = now

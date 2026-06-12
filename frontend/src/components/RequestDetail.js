@@ -39,11 +39,17 @@ import {
 } from "./requestCancellation";
 
 function getRequestAgeIndicator(request) {
-  if (!["in_progress", "pending"].includes(request.status) || !request.created_at) {
+  if (
+    !["in_progress", "pending"].includes(request.status) ||
+    !request.created_at
+  ) {
     return null;
   }
 
-  const ageInHours = differenceInHours(new Date(), new Date(request.created_at));
+  const ageInHours = differenceInHours(
+    new Date(),
+    new Date(request.created_at),
+  );
 
   if (ageInHours > 24 * 5) {
     return {
@@ -88,8 +94,7 @@ function ApprovalChain({ approvals, title = "Approval Chain" }) {
               <div
                 data-testid={`approval-step-${a.step}`}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
-                  isApproved
-                    || isFulfilled
+                  isApproved || isFulfilled
                     ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                     : isRejected
                       ? "bg-red-50 border-red-200 text-red-700"
@@ -102,8 +107,7 @@ function ApprovalChain({ approvals, title = "Approval Chain" }) {
               >
                 <div
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                    isApproved
-                      || isFulfilled
+                    isApproved || isFulfilled
                       ? "bg-emerald-500 text-white"
                       : isRejected
                         ? "bg-red-500 text-white"
@@ -232,6 +236,8 @@ export default function RequestDetail({
   isLoading = false,
 }) {
   const [comments, setComments] = useState("");
+  const [custodianComments, setCustodianComments] = useState("");
+  const [custodianRejectError, setCustodianRejectError] = useState("");
   const [cancelComments, setCancelComments] = useState("");
   const [cancelError, setCancelError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
@@ -284,8 +290,14 @@ export default function RequestDetail({
   const handleAction = async (action) => {
     setActionLoading(true);
     try {
-      await onAction(request.id, action, comments);
+      const isCustodianAction =
+        action === "fulfill" || action === "custodian_reject";
+      const actionComments = isCustodianAction ? custodianComments : comments;
+
+      await onAction(request.id, action, actionComments);
       setComments("");
+      setCustodianComments("");
+      setCustodianRejectError("");
     } finally {
       setActionLoading(false);
     }
@@ -319,7 +331,10 @@ export default function RequestDetail({
     : "";
 
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden" data-testid="request-detail">
+    <div
+      className="h-full overflow-y-auto overflow-x-hidden"
+      data-testid="request-detail"
+    >
       <div className="max-w-3xl mx-auto p-4 sm:p-6 lg:p-10 animate-fade-in">
         {onBack && (
           <div className="mb-4">
@@ -385,17 +400,13 @@ export default function RequestDetail({
             {/* {request.form_template_name}{" "} */}
             {dept && (
               <span className="flex ml-1 items-center gap-1.5">
-                {/* <Building className="w-3.5 h-3.5" /> */}
-                - {dept.name}
+                {/* <Building className="w-3.5 h-3.5" /> */}- {dept.name}
               </span>
             )}
           </div>
         </div>
-
         <Separator className="my-6" />
-
         {/* Form Data */}
-
         <div className="mb-6">
           <h4 className="text-sm font-semibold text-slate-800 mb-3">
             Request Details
@@ -407,7 +418,7 @@ export default function RequestDetail({
                 value &&
                 typeof value === "object" &&
                 "headers" in value &&
-                "rows" in value 
+                "rows" in value
               ) {
                 return (
                   <div key={key} className="w-full px-2">
@@ -425,7 +436,10 @@ export default function RequestDetail({
                           <TableHeader>
                             <TableRow className="bg-slate-100">
                               {(value.headers || []).map((h, i) => (
-                                <TableHead key={i} className="text-xs font-medium">
+                                <TableHead
+                                  key={i}
+                                  className="text-xs font-medium"
+                                >
                                   {h}
                                 </TableHead>
                               ))}
@@ -541,7 +555,6 @@ export default function RequestDetail({
             })}
           </div>
         </div>
-
         {/* Notes */}
         {request.notes && (
           <div className="mb-6 p-4 bg-amber-50/50 border border-amber-100 rounded-lg">
@@ -551,9 +564,7 @@ export default function RequestDetail({
             <div className="text-sm text-amber-800">{request.notes}</div>
           </div>
         )}
-
         <Separator className="my-6" />
-
         {/* Approval Chain */}
         {request.status !== "cancelled" && (
           <>
@@ -575,7 +586,6 @@ export default function RequestDetail({
             )}
           </>
         )}
-
         {/* Action buttons for current approver */}
         {canApprove && (
           <div
@@ -616,7 +626,6 @@ export default function RequestDetail({
             </div>
           </div>
         )}
-
         {canConfirmFulfillment && (
           <div
             className="mt-6 p-5 border border-amber-200 bg-amber-50/30 rounded-lg"
@@ -627,24 +636,54 @@ export default function RequestDetail({
             </h4>
             <Textarea
               data-testid="custodian-comments"
-              placeholder="Add fulfillment notes (optional)..."
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              className="mb-3 bg-white text-sm"
+              placeholder="Add fulfillment notes or rejection reason..."
+              value={custodianComments}
+              onChange={(e) => {
+                setCustodianComments(e.target.value);
+                if (custodianRejectError && e.target.value.trim()) {
+                  setCustodianRejectError("");
+                }
+              }}
+              className="mb-2 bg-white text-sm"
               rows={3}
             />
-            <Button
-              data-testid="fulfilled-button"
-              onClick={() => handleAction("fulfill")}
-              disabled={actionLoading}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5"
-            >
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Fullfilled
-            </Button>
+            {custodianRejectError && (
+              <p
+                className="text-xs text-red-600 mb-3"
+                data-testid="custodian-reject-error"
+              >
+                {custodianRejectError}
+              </p>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                data-testid="fulfilled-button"
+                onClick={() => handleAction("fulfill")}
+                disabled={actionLoading}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5"
+              >
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                Fulfilled
+              </Button>
+              <Button
+                data-testid="custodian-reject-button"
+                onClick={() => {
+                  if (!custodianComments.trim()) {
+                    setCustodianRejectError("A rejection reason is required");
+                    return;
+                  }
+                  handleAction("custodian_reject");
+                }}
+                disabled={actionLoading}
+                variant="outline"
+                className="border-red-200 text-red-600 hover:bg-red-50 font-medium px-5"
+              >
+                <XCircle className="w-4 h-4 mr-2" />
+                Reject
+              </Button>
+            </div>
           </div>
         )}
-
         {/* Cancel for requester while pending */}
         {canCancel && (
           <div className="mt-4 p-4 border border-slate-200 bg-slate-50/40 rounded-lg">
@@ -669,7 +708,10 @@ export default function RequestDetail({
               rows={3}
             />
             {cancelError && (
-              <p className="text-xs text-red-600 mb-3" data-testid="cancel-error">
+              <p
+                className="text-xs text-red-600 mb-3"
+                data-testid="cancel-error"
+              >
                 {cancelError}
               </p>
             )}
@@ -677,7 +719,10 @@ export default function RequestDetail({
               data-testid="cancel-request-button"
               variant="outline"
               className="border-slate-300 text-slate-700 hover:bg-slate-100"
-              disabled={cancelLoading || Boolean(getCancellationReasonError(cancelComments))}
+              disabled={
+                cancelLoading ||
+                Boolean(getCancellationReasonError(cancelComments))
+              }
               onClick={handleCancel}
             >
               <XCircle className="w-4 h-4 mr-2" />
