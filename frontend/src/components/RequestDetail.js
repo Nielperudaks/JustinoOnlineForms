@@ -540,6 +540,20 @@ export default function RequestDetail({
                   </div>
                 );
               }
+              if (getRequestFieldType(request, key) === "textarea") {
+                return (
+                <div key={key} className="w-full px-2">
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">
+                      {label}
+                    </div>
+                    <div className="text-sm text-slate-700">
+                      {formatRequestValue(value)}
+                    </div>
+                  </div>
+                </div>
+              );
+              }
               return (
                 <div key={key} className="w-full md:w-1/2 px-2">
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
