@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from utils.helpers import db, require_form_manager, get_current_user
+from utils.form_fields import get_table_column_headers
 from utils.cache import invalidate_metadata_cache, invalidate_stats_cache, metadata_cache
 from utils.realtime_events import metadata_changed_payload
 from utils.roles import APPROVER_ROLES, FORM_MANAGER_ROLES, SUPER_ADMIN, is_super_admin
@@ -83,6 +84,12 @@ async def validate_manager_assignments(user, approver_chain=None, custodian=None
             )
 
 
+class TableColumn(BaseModel):
+    label: str
+    type: str = "text"
+    unique: bool = False
+
+
 class FormField(BaseModel):
     name: str
     label: str
@@ -94,6 +101,7 @@ class FormField(BaseModel):
     # Table field config
     table_title: Optional[str] = None
     column_headers: Optional[List[str]] = None
+    columns: Optional[List[TableColumn]] = None
     num_rows: Optional[int] = None
 
 
@@ -179,12 +187,24 @@ async def create_template(req: TemplateCreate, current=Depends(require_form_mana
     dept = await db.departments.find_one({"id": req.department_id}, {"_id": 0})
     if not dept:
         raise HTTPException(status_code=400, detail="Department not found")
+    fields = []
+    for field in req.fields:
+        field_data = field.model_dump()
+        if field_data.get("type") == "table":
+            if field_data.get("columns"):
+                field_data["column_headers"] = get_table_column_headers(field_data)
+            elif field_data.get("column_headers"):
+                field_data["columns"] = [
+                    {"label": str(header).strip() or "Column", "type": "text", "unique": False}
+                    for header in field_data["column_headers"]
+                ]
+        fields.append(field_data)
     tmpl = {
         "id": str(uuid.uuid4()),
         "department_id": req.department_id,
         "name": req.name,
         "description": req.description or "",
-        "fields": [f.model_dump() for f in req.fields],
+        "fields": fields,
         "approver_chain": [a.model_dump() for a in req.approver_chain],
         "custodian": req.custodian.model_dump() if req.custodian else None,
         "is_active": True,
@@ -220,7 +240,19 @@ async def update_template(template_id: str, req: TemplateUpdate, current=Depends
     updates = {}
     for k, v in data.items():
         if k == "fields":
-            updates[k] = [f if isinstance(f, dict) else f.model_dump() for f in v]
+            normalized_fields = []
+            for field in v:
+                field_data = field if isinstance(field, dict) else field.model_dump()
+                if field_data.get("type") == "table":
+                    if field_data.get("columns"):
+                        field_data["column_headers"] = get_table_column_headers(field_data)
+                    elif field_data.get("column_headers"):
+                        field_data["columns"] = [
+                            {"label": str(header).strip() or "Column", "type": "text", "unique": False}
+                            for header in field_data["column_headers"]
+                        ]
+                normalized_fields.append(field_data)
+            updates[k] = normalized_fields
         elif k == "approver_chain":
             updates[k] = [a if isinstance(a, dict) else a.model_dump() for a in v]
         elif k == "custodian":

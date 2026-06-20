@@ -12,6 +12,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { X, Plus, Trash2, Building, GripVertical } from "lucide-react";
+import {
+  TABLE_COLUMN_TYPES,
+  buildTableFieldPayload,
+  normalizeTableColumns,
+} from "./tableFieldUtils";
 
 const FIELD_TYPES = [
   { value: "text", label: "Text" },
@@ -40,6 +45,16 @@ function createFieldKey() {
   return `field_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function createTableColumn(overrides = {}) {
+  return {
+    _key: createFieldKey(),
+    label: "Column 1",
+    type: "text",
+    unique: false,
+    ...overrides,
+  };
+}
+
 function createField(overrides = {}) {
   return {
     _key: createFieldKey(),
@@ -50,6 +65,7 @@ function createField(overrides = {}) {
     options: null,
     is_multiselect: false,
     table_title: "",
+    columns: [],
     column_headers: null,
     num_rows: 3,
     ...overrides,
@@ -106,6 +122,15 @@ export default function BuildFormDialog({
                 options: f.options && f.options.length ? f.options : null,
                 is_multiselect: f.is_multiselect === true,
                 table_title: f.table_title || "",
+                columns:
+                  f.type === "table"
+                    ? normalizeTableColumns(f).map((column, columnIndex) =>
+                        createTableColumn({
+                          _key: `${f.name || "table"}_${columnIndex}_${Date.now()}`,
+                          ...column,
+                        }),
+                      )
+                    : [],
                 column_headers:
                   f.column_headers && f.column_headers.length ? f.column_headers : null,
                 num_rows: typeof f.num_rows === "number" ? f.num_rows : 3,
@@ -132,6 +157,7 @@ export default function BuildFormDialog({
         options: null,
         is_multiselect: false,
         table_title: "",
+        columns: [],
         column_headers: null,
         num_rows: 3,
       }),
@@ -150,9 +176,74 @@ export default function BuildFormDialog({
       if (key === "label") {
         next[index].name = slugify(value) || next[index].name;
       }
-      // if (key === "column_headers" && typeof value === "string") {
-      //   next[index].column_headers = value.split(",").map((s) => s.trim()).filter(Boolean);
-      // }
+      if (key === "type" && value === "table" && (!next[index].columns || next[index].columns.length === 0)) {
+        next[index].columns = normalizeTableColumns(next[index]).map((column, columnIndex) =>
+          createTableColumn({
+            _key: `${next[index].name || "table"}_${columnIndex}_${Date.now()}`,
+            ...column,
+          }),
+        );
+      }
+      return next;
+    });
+  };
+
+  const updateTableColumn = (fieldIndex, columnIndex, key, value) => {
+    setFields((prev) => {
+      const next = [...prev];
+      const field = next[fieldIndex];
+      const columns = normalizeTableColumns(field).map((column, index) => ({
+        _key: field.columns?.[index]?._key || createFieldKey(),
+        ...column,
+      }));
+      columns[columnIndex] = {
+        ...columns[columnIndex],
+        [key]: value,
+      };
+      next[fieldIndex] = {
+        ...field,
+        columns,
+        column_headers: columns.map((column) => column.label),
+      };
+      return next;
+    });
+  };
+
+  const addTableColumn = (fieldIndex) => {
+    setFields((prev) => {
+      const next = [...prev];
+      const field = next[fieldIndex];
+      const columns = normalizeTableColumns(field).map((column, index) => ({
+        _key: field.columns?.[index]?._key || createFieldKey(),
+        ...column,
+      }));
+      columns.push(createTableColumn({ label: `Column ${columns.length + 1}` }));
+      next[fieldIndex] = {
+        ...field,
+        columns,
+        column_headers: columns.map((column) => column.label),
+      };
+      return next;
+    });
+  };
+
+  const removeTableColumn = (fieldIndex, columnIndex) => {
+    setFields((prev) => {
+      const next = [...prev];
+      const field = next[fieldIndex];
+      const columns = normalizeTableColumns(field).map((column, index) => ({
+        _key: field.columns?.[index]?._key || createFieldKey(),
+        ...column,
+      }));
+      if (columns.length <= 1) {
+        return prev;
+      }
+      columns.splice(columnIndex, 1);
+      next[fieldIndex] = {
+        ...field,
+        columns,
+        column_headers: columns.map((column) => column.label),
+      };
       return next;
     });
   };
@@ -182,15 +273,11 @@ export default function BuildFormDialog({
         out.is_multiselect = f.is_multiselect === true;
       }
       if (f.type === "table") {
-        out.table_title = (f.table_title || "").trim();
-        const tbl =
-          typeof f.column_headers === "string"
-            ? f.column_headers.split("\n").map((s) => s.trim()).filter(Boolean)
-            : Array.isArray(f.column_headers)
-              ? f.column_headers
-              : [];
-        out.column_headers = tbl.length ? tbl : ["Header 1", "Header 2"];
-        out.num_rows = Number.isInteger(f.num_rows) ? f.num_rows : 3;
+        const table = buildTableFieldPayload(f);
+        out.table_title = table.table_title;
+        out.columns = table.columns;
+        out.column_headers = table.column_headers;
+        out.num_rows = table.num_rows;
       }
       return out;
     });
@@ -423,21 +510,81 @@ export default function BuildFormDialog({
                             className="text-sm h-8"
                           />
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-slate-500">Column headers (one per line; commas allowed in text)</Label>
-                          <Textarea
-                            value={
-                              Array.isArray(field.column_headers)
-                                ? field.column_headers.join("\n")
-                                : typeof field.column_headers === "string"
-                                  ? field.column_headers
-                                  : ""
-                            }
-                            onChange={(e) => updateField(index, "column_headers", e.target.value)}
-                            placeholder={"Header 1\nHeader 2\nHeader 3\n..."}
-                            className="text-sm h-8"
-                            rows={4}
-                          />
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs text-slate-500">Columns</Label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => addTableColumn(index)}
+                              className="h-7 text-[11px]"
+                            >
+                              <Plus className="w-3 h-3 mr-1" /> Add column
+                            </Button>
+                          </div>
+                          <div className="space-y-2">
+                            {normalizeTableColumns(field).map((column, columnIndex) => (
+                              <div
+                                key={field.columns?.[columnIndex]?._key || `${field.name}-${columnIndex}`}
+                                className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_120px_auto_auto] gap-2 items-end rounded-md border border-slate-200 bg-white p-2"
+                              >
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] text-slate-500">Label</Label>
+                                  <Input
+                                    value={column.label}
+                                    onChange={(e) =>
+                                      updateTableColumn(index, columnIndex, "label", e.target.value)
+                                    }
+                                    placeholder={`Column ${columnIndex + 1}`}
+                                    className="text-sm h-8"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] text-slate-500">Type</Label>
+                                  <Select
+                                    value={column.type}
+                                    onValueChange={(v) =>
+                                      updateTableColumn(index, columnIndex, "type", v)
+                                    }
+                                  >
+                                    <SelectTrigger className="text-sm h-8">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {TABLE_COLUMN_TYPES.map((type) => (
+                                        <SelectItem key={type} value={type}>
+                                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <label className="flex items-center gap-1.5 h-8 text-xs text-slate-600 whitespace-nowrap">
+                                  <input
+                                    type="checkbox"
+                                    checked={column.unique === true}
+                                    onChange={(e) =>
+                                      updateTableColumn(index, columnIndex, "unique", e.target.checked)
+                                    }
+                                    className="rounded border-slate-300"
+                                  />
+                                  Unique
+                                </label>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeTableColumn(index, columnIndex)}
+                                  disabled={normalizeTableColumns(field).length <= 1}
+                                  className="h-8 w-8 p-0 text-slate-400 hover:text-red-600"
+                                  title="Remove column"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                         <div className="space-y-1 w-24">
                           <Label className="text-xs text-slate-500">Number of rows</Label>

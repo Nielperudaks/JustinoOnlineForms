@@ -144,12 +144,12 @@ def fake_db(monkeypatch):
     return db
 
 
-def make_template_create(department_id="dept-a", approver_chain=None, custodian=None):
+def make_template_create(department_id="dept-a", approver_chain=None, custodian=None, fields=None):
     return form_templates.TemplateCreate(
         department_id=department_id,
         name="New Form",
         description="",
-        fields=[],
+        fields=fields or [],
         approver_chain=approver_chain or [],
         custodian=custodian,
     )
@@ -334,3 +334,31 @@ def test_manager_cannot_delete_template_outside_department(fake_db):
         run(form_templates.delete_template("template-b", current=manager()))
 
     assert exc.value.status_code == 403
+
+
+def test_template_persists_typed_table_columns_and_unique_flags(fake_db):
+    req = make_template_create(
+        fields=[
+            {
+                "name": "items",
+                "label": "Items",
+                "type": "table",
+                "required": True,
+                "table_title": "Line Items",
+                "columns": [
+                    {"label": "Date", "type": "date", "unique": False},
+                    {"label": "Time", "type": "time", "unique": False},
+                    {"label": "Description", "type": "text", "unique": True},
+                    {"label": "Qty", "type": "number", "unique": False},
+                ],
+                "num_rows": 3,
+            }
+        ],
+    )
+
+    created = run(form_templates.create_template(req, current=manager()))
+
+    table = created["fields"][0]
+    assert table["columns"][0]["type"] == "date"
+    assert table["columns"][1]["type"] == "time"
+    assert table["columns"][2]["unique"] is True

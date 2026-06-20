@@ -25,6 +25,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { X, FileText, ChevronRight, ChevronDown, Upload, File } from "lucide-react";
+import {
+  getTableCellInputType,
+  hasDuplicateTableRows,
+  normalizeTableColumns,
+} from "./tableFieldUtils";
 
 const DROPZONE_MAX_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_EXTENSIONS = /\.(png|jpg|jpeg|gif|webp|pdf|xls|xlsx|doc|docx)$/i;
@@ -176,6 +181,7 @@ export default function CreateRequestDialog({
   const [formData, setFormData] = useState({});
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState("");
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -196,7 +202,8 @@ export default function CreateRequestDialog({
     const initial = {};
     tmpl.fields.forEach((f) => {
       if (f.type === "table") {
-        const headers = f.column_headers || [];
+        const columns = normalizeTableColumns(f);
+        const headers = columns.map((column) => column.label);
         const numRows = Math.max(1, Math.min(50, f.num_rows || 3));
         const rows = Array.from({ length: numRows }, () =>
           headers.map(() => ""),
@@ -204,6 +211,7 @@ export default function CreateRequestDialog({
         initial[f.name] = {
           title: f.table_title || "",
           headers,
+          columns,
           rows,
         };
       } else if (f.type === "dropzone") {
@@ -215,32 +223,43 @@ export default function CreateRequestDialog({
       }
     });
     setFormData(initial);
+    setValidationError("");
     setStep(3);
   };
 
-  const validateForm = () => {
-    if (!selectedTemplate) return false;
+  const getValidationError = () => {
+    if (!selectedTemplate) return "Select a form";
     for (const f of selectedTemplate.fields) {
       if (!f.required) continue;
       const val = formData[f.name];
       if (f.type === "table") {
+        if (hasDuplicateTableRows(f, val)) {
+          return `${f.label || "Table"} has duplicate rows in the selected columns`;
+        }
         const hasContent = val?.rows?.some((row) =>
           row?.some((cell) => String(cell || "").trim()),
         );
-        if (!hasContent) return false;
+        if (!hasContent) return `${f.label || "Table"} is required`;
       } else if (f.type === "dropzone") {
-        if (val == null) return false;
+        if (val == null) return `${f.label || "File"} is required`;
       } else if (f.type === "select" && f.is_multiselect) {
-        if (!Array.isArray(val) || val.length === 0) return false;
+        if (!Array.isArray(val) || val.length === 0) return `${f.label || "Field"} is required`;
       } else if (val == null || String(val || "").trim() === "") {
-        return false;
+        return `${f.label || "Field"} is required`;
       }
     }
-    return true;
+    return "";
   };
 
+  const validateForm = () => !getValidationError();
+
   const handleSubmit = async () => {
-    if (!validateForm()) return;
+    const error = getValidationError();
+    if (error) {
+      setValidationError(error);
+      return;
+    }
+    setValidationError("");
     setSubmitting(true);
     await onSubmit({
       form_template_id: selectedTemplate.id,
@@ -300,7 +319,8 @@ export default function CreateRequestDialog({
       case "table": {
         const tbl = formData[field.name];
         const rows = tbl?.rows || [];
-        const headers = tbl?.headers || field.column_headers || [];
+        const columns = tbl?.columns || normalizeTableColumns(field);
+        const headers = tbl?.headers || columns.map((column) => column.label);
         if (headers.length === 0) {
           return (
             <div className="text-xs text-slate-400 italic py-2">
@@ -332,6 +352,8 @@ export default function CreateRequestDialog({
                       <TableCell key={ci} className="p-1">
                         <Input
                           value={cell}
+                          type={getTableCellInputType(columns[ci]?.type)}
+                          aria-label={headers[ci] || `Column ${ci + 1}`}
                           onChange={(e) =>
                             updateTableCell(field.name, ri, ci, e.target.value)
                           }
@@ -632,7 +654,7 @@ export default function CreateRequestDialog({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-200 flex items-center justify-between flex-shrink-0">
+        <div className="p-4 border-t border-slate-200 flex items-center justify-between flex-shrink-0 gap-3">
           <div>
             {step > 1 && (
               <Button
@@ -665,6 +687,11 @@ export default function CreateRequestDialog({
               </Button>
             )}
           </div>
+          {validationError && (
+            <div className="flex-1 text-right text-xs text-red-600">
+              {validationError}
+            </div>
+          )}
         </div>
       </div>
     </div>

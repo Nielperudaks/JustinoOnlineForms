@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from utils.helpers import db, get_current_user, render_request_email, send_email_notification
+from utils.form_fields import validate_table_field_rows
 from utils.roles import (
     APPROVER_ROLES,
     FORM_MANAGER_ROLES,
@@ -287,6 +288,10 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     if not tmpl:
         raise HTTPException(status_code=400, detail="Form template not found or inactive")
     display_title = tmpl["name"]
+
+    for field in tmpl.get("fields", []):
+        if field.get("type") == "table":
+            validate_table_field_rows(field, req.form_data.get(field.get("name")))
 
     count = await db.requests.count_documents({})
     request_number = f"REQ-{count + 1:05d}"
