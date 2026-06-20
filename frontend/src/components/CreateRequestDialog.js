@@ -357,7 +357,7 @@ export default function CreateRequestDialog({
                           onChange={(e) =>
                             updateTableCell(field.name, ri, ci, e.target.value)
                           }
-                          className="text-sm h-8 border-slate-200"
+                          className="text-sm h-8 border-slate-200 min-w-[150px]"
                         />
                       </TableCell>
                     ))}
