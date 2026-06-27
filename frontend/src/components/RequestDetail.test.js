@@ -1,5 +1,6 @@
 import {
   canRequestBeCancelled,
+  canViewCancellationReason,
   getCancellationReasonError,
 } from "./requestCancellation";
 import { getRequestFieldType, getSafeLinkHref } from "./requestDetailLinks";
@@ -51,6 +52,38 @@ describe("request cancellation rules", () => {
     };
 
     expect(canRequestBeCancelled(request, { id: "requester-1" })).toBe(false);
+  });
+
+  test("lets super admin cancel pending requests even after approvals", () => {
+    const request = {
+      status: "pending",
+      requester_id: "requester-1",
+      approvals: [
+        { status: "approved" },
+        { status: "approved" },
+      ],
+    };
+
+    expect(
+      canRequestBeCancelled(request, { id: "admin-1", role: "super_admin" }),
+    ).toBe(true);
+  });
+
+  test("shows cancellation reason to requester and super admin only", () => {
+    const request = {
+      requester_id: "requester-1",
+      cancellation_reason: "No longer needed",
+    };
+
+    expect(
+      canViewCancellationReason(request, { id: "requester-1", role: "requestor" }),
+    ).toBe(true);
+    expect(
+      canViewCancellationReason(request, { id: "admin-1", role: "super_admin" }),
+    ).toBe(true);
+    expect(
+      canViewCancellationReason(request, { id: "other-1", role: "approver" }),
+    ).toBe(false);
   });
 
   test("requires a cancellation reason", () => {

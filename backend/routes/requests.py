@@ -485,14 +485,17 @@ async def cancel_request(request_id: str, cancellation: RequestCancel, user=Depe
         raise HTTPException(status_code=400, detail=f"Request is already {req['status']}")
 
     approvals = req.get("approvals", [])
-    if not approvals or all(a.get("status") == "approved" for a in approvals):
+    custodian = req.get("custodian") or {}
+    is_super_admin = user.get("role") == SUPER_ADMIN
+
+    if not is_super_admin and (not approvals or all(a.get("status") == "approved" for a in approvals)):
         raise HTTPException(
             status_code=400,
             detail="Request can no longer be cancelled because all approvers have approved it",
         )
 
-    # Only the requester (or super admin) can cancel their own request
-    if user["id"] != req["requester_id"] and user.get("role") != SUPER_ADMIN:
+    # Requester can cancel while approvers are still pending. Super admin can cancel any active request.
+    if user["id"] != req["requester_id"] and not is_super_admin:
         raise HTTPException(status_code=403, detail="You are not allowed to cancel this request")
 
     now = datetime.now(timezone.utc).isoformat()
@@ -504,11 +507,17 @@ async def cancel_request(request_id: str, cancellation: RequestCancel, user=Depe
             approval["comments"] = cancellation_reason
             approval["acted_at"] = now
 
+    if custodian.get("status") in ("pending", "waiting"):
+        custodian["status"] = "cancelled"
+        custodian["comments"] = cancellation_reason
+        custodian["acted_at"] = now
+
     await db.requests.update_one(
         {"id": request_id},
         {
             "$set": {
                 "approvals": approvals,
+                "custodian": custodian,
                 "status": "cancelled",
                 "cancellation_reason": cancellation_reason,
                 "cancelled_by": user["id"],

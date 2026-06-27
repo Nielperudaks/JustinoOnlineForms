@@ -329,7 +329,7 @@ export default function CreateRequestDialog({
           );
         }
         return (
-          <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className={`rounded-lg border  overflow-hidden ${getValidationError() ? "border-red-300" : "border-slate-200"}`}>
             {tbl?.title && (
               <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">
                 {tbl.title}
@@ -687,11 +687,11 @@ export default function CreateRequestDialog({
               </Button>
             )}
           </div>
-          {validationError && (
-            <div className="flex-1 text-right text-xs text-red-600">
-              {validationError}
+          {/* {!validateForm() && (
+            <div className="flex-1 flex-row text-right text-xs text-red-600">
+              {getValidationError()}
             </div>
-          )}
+          )} */}
         </div>
       </div>
     </div>

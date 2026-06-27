@@ -35,6 +35,7 @@ import { getRequestFieldType, getSafeLinkHref } from "./requestDetailLinks";
 import { getRequestStatusConfig } from "./requestStatus";
 import {
   canRequestBeCancelled,
+  canViewCancellationReason,
   getCancellationReasonError,
 } from "./requestCancellation";
 
@@ -273,6 +274,7 @@ export default function RequestDetail({
   const requesterDept = departments?.find(
     (d) => d.id === request.requester_department_id,
   );
+  const showCancellationReason = canViewCancellationReason(request, currentUser);
 
   const canApprove =
     request.status === "in_progress" &&
@@ -578,6 +580,23 @@ export default function RequestDetail({
             <div className="text-sm text-amber-800">{request.notes}</div>
           </div>
         )}
+        {request.status === "cancelled" &&
+          request.cancellation_reason &&
+          showCancellationReason && (
+            <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">
+                Cancellation reason
+              </div>
+              <div className="text-sm text-slate-700 whitespace-pre-wrap">
+                {request.cancellation_reason}
+              </div>
+              {request.cancelled_by_name && (
+                <div className="mt-2 text-xs text-slate-500">
+                  Cancelled by {request.cancelled_by_name}
+                </div>
+              )}
+            </div>
+          )}
         <Separator className="my-6" />
         {/* Approval Chain */}
         {request.status !== "cancelled" && (
