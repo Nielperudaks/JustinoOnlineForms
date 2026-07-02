@@ -380,7 +380,7 @@ export default function RequestList({
             <div className="text-xs text-slate-400 mt-1">Create a new request to get started</div>
           </div>
         ) : (
-          <div>
+          <div className="">
             {requests.map((req, idx) => {
               const statusCfg = getRequestStatusConfig(req);
               const isActive = selectedRequest?.id === req.id;
@@ -393,21 +393,21 @@ export default function RequestList({
                 <div
                   key={req.id}
                   data-testid={`request-item-${req.id}`}
-                  className={`request-item px-4 py-3 max-[420px]:px-3 max-[420px]:py-2.5 border-b border-slate-100 ${isActive ? "active" : ""}`}
+                  className={`request-item px-4 py-3 max-[420px]:px-3 max-[420px]:py-2.5 border-b border-slate-100 max-w-full ${isActive ? "active" : ""}`}
                   onClick={() => onSelect(req)}
                   style={{ animationDelay: `${idx * 30}ms` }}
                 >
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[10px] max-[420px]:text-[9px] text-slate-400">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-[10px] max-[420px]:text-[9px] text-slate-400 flex-shrink-0">
                           {req.request_number}
                         </span>
                         {ageIndicator && (
-                          <AlertTriangle className={`w-3 h-3 ${ageIndicator.iconClassName}`} />
+                          <AlertTriangle className={`w-3 h-3 flex-shrink-0 ${ageIndicator.iconClassName}`} />
                         )}
                       </div>
-                      <h4 className="text-sm max-[420px]:text-[13px] max-w-[90%] font-medium text-slate-800 truncate mt-0.5">
+                      <h4 className="text-sm max-[420px]:text-[13px] w-full font-medium text-slate-800 truncate mt-0.5">
                         {req.form_template_name || req.title}
                       </h4>
                     </div>
