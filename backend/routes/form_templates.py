@@ -13,7 +13,16 @@ from datetime import datetime, timezone
 templates_router = APIRouter(prefix="/form-templates", tags=["form-templates"])
 
 MAX_APPROVER_STEPS = 8
-SPECIAL_APPROVER_IDS = {"immediate_manager", "immediate_supervisor"}
+# Role-based approval steps resolved from the requestor's department
+# hierarchy at request time ("immediate_manager" is a legacy alias of
+# "requestor_manager" kept so existing templates keep working).
+SPECIAL_APPROVER_IDS = {
+    "immediate_supervisor",
+    "requestor_manager",
+    "immediate_manager",
+    "department_executive",
+    "immediate_head",
+}
 
 
 def manager_department_id(user):

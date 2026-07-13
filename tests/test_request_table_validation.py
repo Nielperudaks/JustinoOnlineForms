@@ -92,6 +92,7 @@ class FakeDb:
                 }
             ]
         )
+        self.departments = Collection([{"id": "dept-a", "executive_id": None, "manager_id": None, "department_groups": []}])
         self.requests = Collection([])
         self.users = Collection([])
         self.notifications = Collection([])

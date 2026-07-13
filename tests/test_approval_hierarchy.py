@@ -2,10 +2,13 @@ import asyncio
 import sys
 from pathlib import Path
 
+import pytest
+from fastapi import HTTPException
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from backend.routes import requests
-from backend.utils.roles import APPROVER_ROLES, REQUESTOR_ROLES
+from backend.utils.roles import APPROVER_ROLES, REQUESTOR_ROLES, hierarchy_level
 
 
 class FakeResult:
@@ -45,6 +48,8 @@ class FakeCollection:
             if isinstance(expected, dict):
                 if "$in" in expected and actual not in expected["$in"]:
                     return False
+                if "$ne" in expected and actual == expected["$ne"]:
+                    return False
                 continue
             if actual != expected:
                 return False
@@ -66,6 +71,8 @@ class FakeDb:
             [
                 {
                     "id": "dept-a",
+                    "executive_id": "executive-a",
+                    "manager_id": "manager-a",
                     "department_groups": [
                         {
                             "id": "group-a",
@@ -84,13 +91,7 @@ class FakeDb:
                     "department_id": "dept-a",
                     "name": "Leave Form",
                     "fields": [],
-                    "approver_chain": [
-                        {
-                            "step": 1,
-                            "user_id": "immediate_manager",
-                            "user_name": "Immediate Manager",
-                        }
-                    ],
+                    "approver_chain": [],
                     "is_active": True,
                 }
             ]
@@ -98,35 +99,19 @@ class FakeDb:
         self.users = FakeCollection(
             [
                 {
-                    "id": "manager-ops-a",
-                    "name": "Manager OPS A",
-                    "email": "manager.ops@example.com",
-                    "role": "manager_ops",
+                    "id": "manager-a",
+                    "name": "Manager A",
+                    "email": "manager@example.com",
+                    "role": "manager",
                     "department_id": "dept-a",
                     "is_active": True,
                 },
                 {
-                    "id": "manager-sup-a",
-                    "name": "Manager SUP A",
-                    "email": "manager.sup@example.com",
-                    "role": "manager_sup",
-                    "department_id": "dept-a",
-                    "is_active": True,
-                },
-                {
-                    "id": "executive-ops",
-                    "name": "Executive OPS",
-                    "email": "exec.ops@example.com",
-                    "role": "executive_ops",
-                    "department_id": "executive",
-                    "is_active": True,
-                },
-                {
-                    "id": "executive-sup",
-                    "name": "Executive SUP",
-                    "email": "exec.sup@example.com",
-                    "role": "executive_sup",
-                    "department_id": "executive",
+                    "id": "executive-a",
+                    "name": "Executive A",
+                    "email": "executive@example.com",
+                    "role": "executive",
+                    "department_id": "corporate",
                     "is_active": True,
                 },
                 {
@@ -154,13 +139,53 @@ def make_request():
     )
 
 
-def submit_as(user, monkeypatch, approver_id="immediate_manager"):
-    db = FakeDb()
-    db.form_templates.items[0]["approver_chain"][0] = {
-        "step": 1,
-        "user_id": approver_id,
-        "user_name": "Immediate Supervisor" if approver_id == "immediate_supervisor" else "Immediate Manager",
-    }
+REQUESTOR_A = {
+    "id": "requestor-a",
+    "name": "Requestor A",
+    "email": "requestor@example.com",
+    "role": "requestor",
+    "department_id": "dept-a",
+}
+
+REQUESTOR_B = {  # not in any department group
+    "id": "requestor-b",
+    "name": "Requestor B",
+    "email": "requestor.b@example.com",
+    "role": "requestor",
+    "department_id": "dept-a",
+}
+
+SUPERVISOR_A = {
+    "id": "supervisor-a",
+    "name": "Supervisor A",
+    "email": "supervisor@example.com",
+    "role": "supervisor",
+    "department_id": "dept-a",
+}
+
+MANAGER_A = {
+    "id": "manager-a",
+    "name": "Manager A",
+    "email": "manager@example.com",
+    "role": "manager",
+    "department_id": "dept-a",
+}
+
+EXECUTIVE_A = {
+    "id": "executive-a",
+    "name": "Executive A",
+    "email": "executive@example.com",
+    "role": "executive",
+    "department_id": "corporate",
+}
+
+
+def submit_as(user, monkeypatch, approver_ids=("immediate_head",), db=None):
+    db = db or FakeDb()
+    db.form_templates.items[0]["approver_chain"] = [
+        {"step": index + 1, "user_id": approver_id, "user_name": approver_id}
+        for index, approver_id in enumerate(approver_ids)
+    ]
     monkeypatch.setattr(requests, "db", db)
     monkeypatch.setattr(requests, "manager", FakeManager())
     monkeypatch.setattr(requests, "send_email_notification", send_email_noop)
@@ -168,109 +193,148 @@ def submit_as(user, monkeypatch, approver_id="immediate_manager"):
     return run(requests.create_request(make_request(), user=user))
 
 
-def test_supervisor_role_can_request_and_approve():
-    assert "supervisor" in REQUESTOR_ROLES
-    assert "supervisor" in APPROVER_ROLES
+def approver_ids_of(created):
+    return [a["approver_id"] for a in created["approvals"]]
 
 
-def test_executive_role_can_request_and_approve_without_managerial_fallback():
-    assert "executive" in REQUESTOR_ROLES
-    assert "executive" in APPROVER_ROLES
-    assert requests.executive_role_for_manager({"role": "executive"}) is None
+def test_core_roles_can_request_and_approve():
+    for role in ("supervisor", "manager", "executive"):
+        assert role in REQUESTOR_ROLES
+        assert role in APPROVER_ROLES
+    assert hierarchy_level("requestor") == 0
+    assert hierarchy_level("supervisor") == 1
+    assert hierarchy_level("manager") == 2
+    assert hierarchy_level("executive") == 3
+    # Legacy roles keep working as aliases
+    assert hierarchy_level("manager_ops") == 2
+    assert hierarchy_level("executive_sup") == 3
 
 
-def test_non_manager_user_routes_immediate_manager_to_department_manager(monkeypatch):
+# ── Supervisor step ──
+
+def test_group_member_supervisor_step_routes_to_group_supervisor(monkeypatch):
+    created = submit_as(REQUESTOR_A, monkeypatch, ("immediate_supervisor",))
+    assert approver_ids_of(created) == ["supervisor-a"]
+
+
+def test_supervisor_step_skips_when_requestor_has_no_group(monkeypatch):
+    created = submit_as(REQUESTOR_B, monkeypatch, ("immediate_supervisor",))
+    assert approver_ids_of(created) == []
+    assert created["status"] == "approved"
+
+
+def test_supervisor_step_skips_for_supervisor_requestor(monkeypatch):
     created = submit_as(
-        {
-            "id": "requestor-a",
-            "name": "Requestor A",
-            "email": "requestor@example.com",
-            "role": "requestor",
-            "department_id": "dept-a",
-        },
-        monkeypatch,
+        SUPERVISOR_A, monkeypatch, ("immediate_supervisor", "requestor_manager")
     )
-
-    assert created["approvals"][0]["approver_id"] == "manager-ops-a"
-    assert created["approvals"][0]["approver_name"] == "Manager OPS A"
+    assert approver_ids_of(created) == ["manager-a"]
 
 
-def test_manager_ops_routes_immediate_manager_to_executive_ops(monkeypatch):
+# ── Requestor's Manager step ──
+
+def test_manager_step_routes_to_assigned_department_manager(monkeypatch):
+    created = submit_as(REQUESTOR_A, monkeypatch, ("requestor_manager",))
+    assert approver_ids_of(created) == ["manager-a"]
+
+
+def test_legacy_immediate_manager_id_aliases_to_requestor_manager(monkeypatch):
+    created = submit_as(REQUESTOR_A, monkeypatch, ("immediate_manager",))
+    assert approver_ids_of(created) == ["manager-a"]
+
+
+def test_manager_step_skips_when_department_has_no_manager(monkeypatch):
+    db = FakeDb()
+    db.departments.items[0]["manager_id"] = None
+    db.users.items = [u for u in db.users.items if u["id"] != "manager-a"]
+    created = submit_as(REQUESTOR_A, monkeypatch, ("requestor_manager",), db=db)
+    assert approver_ids_of(created) == []
+    assert created["status"] == "approved"
+
+
+def test_manager_step_falls_back_to_department_manager_role_when_unassigned(monkeypatch):
+    db = FakeDb()
+    db.departments.items[0]["manager_id"] = None
+    created = submit_as(REQUESTOR_A, monkeypatch, ("requestor_manager",), db=db)
+    assert approver_ids_of(created) == ["manager-a"]
+
+
+def test_manager_step_skips_for_manager_requestor(monkeypatch):
     created = submit_as(
-        {
-            "id": "manager-ops-a",
-            "name": "Manager OPS A",
-            "email": "manager.ops@example.com",
-            "role": "manager_ops",
-            "department_id": "dept-a",
-        },
-        monkeypatch,
+        MANAGER_A, monkeypatch, ("requestor_manager", "department_executive")
     )
-
-    assert created["approvals"][0]["approver_id"] == "executive-ops"
-    assert created["approvals"][0]["approver_name"] == "Executive OPS"
+    assert approver_ids_of(created) == ["executive-a"]
 
 
-def test_manager_sup_routes_immediate_manager_to_executive_sup(monkeypatch):
+# ── Executive step ──
+
+def test_executive_step_routes_to_assigned_department_executive(monkeypatch):
+    created = submit_as(REQUESTOR_A, monkeypatch, ("department_executive",))
+    assert approver_ids_of(created) == ["executive-a"]
+
+
+def test_executive_step_errors_when_department_has_no_executive(monkeypatch):
+    db = FakeDb()
+    db.departments.items[0]["executive_id"] = None
+    with pytest.raises(HTTPException) as exc:
+        submit_as(REQUESTOR_A, monkeypatch, ("department_executive",), db=db)
+    assert exc.value.status_code == 400
+    assert "Executive" in exc.value.detail
+
+
+def test_executive_step_skips_for_executive_requestor(monkeypatch):
+    created = submit_as(EXECUTIVE_A, monkeypatch, ("department_executive",))
+    assert approver_ids_of(created) == []
+    assert created["status"] == "approved"
+
+
+# ── Immediate Head step ──
+
+def test_immediate_head_prefers_group_supervisor_for_members(monkeypatch):
+    created = submit_as(REQUESTOR_A, monkeypatch, ("immediate_head",))
+    assert approver_ids_of(created) == ["supervisor-a"]
+
+
+def test_immediate_head_uses_manager_when_no_supervisor(monkeypatch):
+    created = submit_as(REQUESTOR_B, monkeypatch, ("immediate_head",))
+    assert approver_ids_of(created) == ["manager-a"]
+
+
+def test_immediate_head_for_supervisor_requestor_is_manager(monkeypatch):
+    created = submit_as(SUPERVISOR_A, monkeypatch, ("immediate_head",))
+    assert approver_ids_of(created) == ["manager-a"]
+
+
+def test_immediate_head_for_manager_requestor_is_executive(monkeypatch):
+    created = submit_as(MANAGER_A, monkeypatch, ("immediate_head",))
+    assert approver_ids_of(created) == ["executive-a"]
+
+
+def test_immediate_head_falls_back_to_executive_when_no_supervisor_or_manager(monkeypatch):
+    db = FakeDb()
+    db.departments.items[0]["manager_id"] = None
+    db.departments.items[0]["department_groups"] = []
+    db.users.items = [u for u in db.users.items if u["id"] != "manager-a"]
+    created = submit_as(REQUESTOR_A, monkeypatch, ("immediate_head",), db=db)
+    assert approver_ids_of(created) == ["executive-a"]
+
+
+def test_immediate_head_errors_when_department_has_no_heads_at_all(monkeypatch):
+    db = FakeDb()
+    db.departments.items[0]["manager_id"] = None
+    db.departments.items[0]["executive_id"] = None
+    db.departments.items[0]["department_groups"] = []
+    db.users.items = []
+    with pytest.raises(HTTPException) as exc:
+        submit_as(REQUESTOR_A, monkeypatch, ("immediate_head",), db=db)
+    assert exc.value.status_code == 400
+
+
+def test_duplicate_resolved_heads_collapse_into_one_step(monkeypatch):
+    # Supervisor step and Immediate Head both resolve to the same supervisor.
     created = submit_as(
-        {
-            "id": "manager-sup-a",
-            "name": "Manager SUP A",
-            "email": "manager.sup@example.com",
-            "role": "manager_sup",
-            "department_id": "dept-a",
-        },
+        REQUESTOR_A,
         monkeypatch,
+        ("immediate_supervisor", "immediate_head", "department_executive"),
     )
-
-    assert created["approvals"][0]["approver_id"] == "executive-sup"
-    assert created["approvals"][0]["approver_name"] == "Executive SUP"
-
-
-def test_group_member_routes_immediate_supervisor_to_group_supervisor(monkeypatch):
-    created = submit_as(
-        {
-            "id": "requestor-a",
-            "name": "Requestor A",
-            "email": "requestor@example.com",
-            "role": "requestor",
-            "department_id": "dept-a",
-        },
-        monkeypatch,
-        approver_id="immediate_supervisor",
-    )
-
-    assert created["approvals"][0]["approver_id"] == "supervisor-a"
-    assert created["approvals"][0]["approver_name"] == "Supervisor A"
-
-
-def test_supervisor_requestor_routes_immediate_supervisor_to_manager(monkeypatch):
-    created = submit_as(
-        {
-            "id": "supervisor-a",
-            "name": "Supervisor A",
-            "email": "supervisor@example.com",
-            "role": "supervisor",
-            "department_id": "dept-a",
-        },
-        monkeypatch,
-        approver_id="immediate_supervisor",
-    )
-
-    assert created["approvals"][0]["approver_id"] == "manager-ops-a"
-
-
-def test_non_group_member_routes_immediate_supervisor_to_manager(monkeypatch):
-    created = submit_as(
-        {
-            "id": "requestor-b",
-            "name": "Requestor B",
-            "email": "requestor.b@example.com",
-            "role": "requestor",
-            "department_id": "dept-a",
-        },
-        monkeypatch,
-        approver_id="immediate_supervisor",
-    )
-
-    assert created["approvals"][0]["approver_id"] == "manager-ops-a"
+    assert approver_ids_of(created) == ["supervisor-a", "executive-a"]
+    assert [a["step"] for a in created["approvals"]] == [1, 2]

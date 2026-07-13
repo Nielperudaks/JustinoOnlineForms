@@ -131,7 +131,9 @@ def test_update_department_accepts_valid_department_groups(fake_db):
     assert updated["department_groups"][0]["id"]
 
 
-def test_update_department_accepts_plain_executive_as_group_member(fake_db):
+def test_update_department_rejects_executive_as_group_member(fake_db):
+    # Executives are managerial heads in the department hierarchy and can no
+    # longer be regular department-group members.
     req = departments.DepartmentUpdate(
         department_groups=[
             {
@@ -142,9 +144,10 @@ def test_update_department_accepts_plain_executive_as_group_member(fake_db):
         ]
     )
 
-    updated = run(departments.update_department("dept-a", req, admin=admin()))
+    with pytest.raises(HTTPException) as exc:
+        run(departments.update_department("dept-a", req, admin=admin()))
 
-    assert updated["department_groups"][0]["member_ids"] == ["executive-a"]
+    assert exc.value.status_code == 400
 
 
 def test_update_department_rejects_duplicate_group_member(fake_db):
@@ -188,3 +191,80 @@ def test_update_department_rejects_manager_as_group_member(fake_db):
 
     assert exc.value.status_code == 400
     assert "member" in exc.value.detail.lower()
+
+def test_update_department_assigns_executive_and_manager(fake_db):
+    req = departments.DepartmentUpdate(executive_id="executive-a", manager_id="manager-a")
+
+    updated = run(departments.update_department("dept-a", req, admin=admin()))
+
+    assert updated["executive_id"] == "executive-a"
+    assert updated["manager_id"] == "manager-a"
+
+
+def test_update_department_rejects_non_executive_as_department_executive(fake_db):
+    req = departments.DepartmentUpdate(executive_id="requestor-a")
+
+    with pytest.raises(HTTPException) as exc:
+        run(departments.update_department("dept-a", req, admin=admin()))
+
+    assert exc.value.status_code == 400
+    assert "Executive" in exc.value.detail
+
+
+def test_update_department_rejects_non_manager_as_department_manager(fake_db):
+    req = departments.DepartmentUpdate(manager_id="supervisor-a")
+
+    with pytest.raises(HTTPException) as exc:
+        run(departments.update_department("dept-a", req, admin=admin()))
+
+    assert exc.value.status_code == 400
+    assert "Manager" in exc.value.detail
+
+
+def test_update_department_rejects_manager_already_heading_another_department(fake_db):
+    fake_db.departments.items.append(
+        {
+            "id": "dept-b",
+            "name": "Department B",
+            "code": "B",
+            "description": "",
+            "manager_id": "manager-a",
+            "is_active": True,
+        }
+    )
+    req = departments.DepartmentUpdate(manager_id="manager-a")
+
+    with pytest.raises(HTTPException) as exc:
+        run(departments.update_department("dept-a", req, admin=admin()))
+
+    assert exc.value.status_code == 400
+    assert "one department" in exc.value.detail.lower()
+
+
+def test_update_department_allows_clearing_head_assignments(fake_db):
+    fake_db.departments.items[0]["executive_id"] = "executive-a"
+    fake_db.departments.items[0]["manager_id"] = "manager-a"
+    req = departments.DepartmentUpdate(executive_id="", manager_id="")
+
+    updated = run(departments.update_department("dept-a", req, admin=admin()))
+
+    assert updated["executive_id"] is None
+    assert updated["manager_id"] is None
+
+
+def test_same_executive_can_head_multiple_departments(fake_db):
+    fake_db.departments.items.append(
+        {
+            "id": "dept-b",
+            "name": "Department B",
+            "code": "B",
+            "description": "",
+            "executive_id": "executive-a",
+            "is_active": True,
+        }
+    )
+    req = departments.DepartmentUpdate(executive_id="executive-a")
+
+    updated = run(departments.update_department("dept-a", req, admin=admin()))
+
+    assert updated["executive_id"] == "executive-a"

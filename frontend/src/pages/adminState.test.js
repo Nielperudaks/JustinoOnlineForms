@@ -62,9 +62,11 @@ describe("admin state helpers", () => {
     ];
     const groups = [{ id: "group-1", member_ids: ["requestor-a"] }];
 
+    // Executives are managerial heads in the department hierarchy, so they
+    // are not eligible as regular group members.
     expect(
       getAvailableDepartmentGroupMembers(users, "dept-a", groups).map((u) => u.id),
-    ).toEqual(["requestor-b", "executive-a"]);
+    ).toEqual(["requestor-b"]);
   });
 
   test("normalizes department groups for editing by dropping stale invalid members", () => {
@@ -96,13 +98,15 @@ describe("admin state helpers", () => {
     expect(getEditableDepartmentGroups(users, "dept-a", groups)[0].member_ids).toEqual([
       "requestor-a",
       "approver-a",
-      "executive-a",
     ]);
   });
 
   test("labels special approver placeholders", () => {
-    expect(getSpecialApproverLabel("immediate_manager")).toBe("Immediate Manager");
-    expect(getSpecialApproverLabel("immediate_supervisor")).toBe("Immediate Supervisor");
+    expect(getSpecialApproverLabel("immediate_supervisor")).toBe("Supervisor");
+    expect(getSpecialApproverLabel("requestor_manager")).toBe("Requestor's Manager");
+    expect(getSpecialApproverLabel("immediate_manager")).toBe("Requestor's Manager");
+    expect(getSpecialApproverLabel("department_executive")).toBe("Executive");
+    expect(getSpecialApproverLabel("immediate_head")).toBe("Immediate Head");
     expect(getSpecialApproverLabel("user-1")).toBe("");
   });
 

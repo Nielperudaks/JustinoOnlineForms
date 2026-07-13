@@ -1,26 +1,51 @@
-MANAGER_OPS = "manager_ops"
-MANAGER_SUP = "manager_sup"
-EXECUTIVE_OPS = "executive_ops"
-EXECUTIVE_SUP = "executive_sup"
-EXECUTIVE = "executive"
-LEGACY_MANAGER = "manager"
+# Core roles form a fixed departmental hierarchy. Who actually approves a
+# request is resolved at request time from per-department assignments
+# (department executive/manager/supervisor groups), not from role names.
+REQUESTOR = "requestor"
+BOTH = "both"  # Requestor and Approver
 SUPERVISOR = "supervisor"
+MANAGER = "manager"
+EXECUTIVE = "executive"
 SUPER_ADMIN = "super_admin"
 
-REQUESTOR_ROLES = {"requestor", "both", EXECUTIVE, MANAGER_OPS, MANAGER_SUP, SUPERVISOR, SUPER_ADMIN}
-MANAGER_ROLES = {MANAGER_OPS, MANAGER_SUP}
-FORM_MANAGER_ROLES = MANAGER_ROLES | {LEGACY_MANAGER}
-EXECUTIVE_ROLES = {EXECUTIVE_OPS, EXECUTIVE_SUP}
-APPROVER_ROLES = {"approver", "both", EXECUTIVE, SUPERVISOR, SUPER_ADMIN} | FORM_MANAGER_ROLES | EXECUTIVE_ROLES
+# Legacy role values that may still exist on user documents. They keep
+# working as aliases of the core manager/executive roles.
+LEGACY_MANAGER_ROLES = {"manager_ops", "manager_sup"}
+LEGACY_EXECUTIVE_ROLES = {"executive_ops", "executive_sup"}
 
-EXECUTIVE_BY_MANAGER_ROLE = {
-    MANAGER_OPS: EXECUTIVE_OPS,
-    MANAGER_SUP: EXECUTIVE_SUP,
-}
+MANAGER_ROLES = {MANAGER} | LEGACY_MANAGER_ROLES
+EXECUTIVE_ROLES = {EXECUTIVE} | LEGACY_EXECUTIVE_ROLES
+
+# Roles allowed to manage forms for their department.
+FORM_MANAGER_ROLES = MANAGER_ROLES
+
+REQUESTOR_ROLES = {REQUESTOR, BOTH, SUPERVISOR, SUPER_ADMIN} | MANAGER_ROLES | EXECUTIVE_ROLES
+APPROVER_ROLES = {"approver", BOTH, SUPERVISOR, SUPER_ADMIN} | MANAGER_ROLES | EXECUTIVE_ROLES
+
+# Managerial hierarchy levels used to resolve role-based approval steps.
+# A head at level N approves requestors below level N.
+SUPERVISOR_LEVEL = 1
+MANAGER_LEVEL = 2
+EXECUTIVE_LEVEL = 3
+
+
+def hierarchy_level(role):
+    """Managerial level of a role: 0 for non-managerial requestors/approvers."""
+    if role == SUPERVISOR:
+        return SUPERVISOR_LEVEL
+    if role in MANAGER_ROLES:
+        return MANAGER_LEVEL
+    if role in EXECUTIVE_ROLES:
+        return EXECUTIVE_LEVEL
+    return 0
 
 
 def role_of(user):
     return (user or {}).get("role", "")
+
+
+def user_hierarchy_level(user):
+    return hierarchy_level(role_of(user))
 
 
 def is_super_admin(user):
@@ -28,11 +53,15 @@ def is_super_admin(user):
 
 
 def is_manager_role(role):
-    return role in FORM_MANAGER_ROLES
+    return role in MANAGER_ROLES
 
 
 def is_manager(user):
     return is_manager_role(role_of(user))
+
+
+def is_executive_role(role):
+    return role in EXECUTIVE_ROLES
 
 
 def is_supervisor_role(role):
@@ -45,7 +74,3 @@ def is_approval_capable(user):
 
 def is_requestor_capable(user):
     return role_of(user) in REQUESTOR_ROLES
-
-
-def executive_role_for_manager(user):
-    return EXECUTIVE_BY_MANAGER_ROLE.get(role_of(user))

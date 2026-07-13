@@ -30,6 +30,7 @@ const GROUP_MEMBER_EXCLUDED_ROLES = new Set([
   "manager",
   "manager_ops",
   "manager_sup",
+  "executive",
   "executive_ops",
   "executive_sup",
   "super_admin",
@@ -81,10 +82,39 @@ export function getEditableDepartmentGroups(users, departmentId, groups) {
   });
 }
 
+// Role-based approval steps resolved from the requestor's department
+// hierarchy at request time. "immediate_manager" is a legacy alias of
+// "requestor_manager" kept so existing templates keep working.
+export const SPECIAL_APPROVERS = [
+  {
+    id: "immediate_supervisor",
+    label: "Supervisor",
+    description: "Requestor's group supervisor. Skipped if the requestor has no supervisor.",
+  },
+  {
+    id: "requestor_manager",
+    label: "Requestor's Manager",
+    description: "Manager of the requestor's department. Skipped if the department has no manager.",
+  },
+  {
+    id: "department_executive",
+    label: "Executive",
+    description: "Executive of the requestor's department. Mandatory — requests fail if none is assigned.",
+  },
+  {
+    id: "immediate_head",
+    label: "Immediate Head",
+    description: "Lowest head above the requestor: supervisor, then manager, then executive.",
+  },
+];
+
+const SPECIAL_APPROVER_LABELS = {
+  ...Object.fromEntries(SPECIAL_APPROVERS.map((a) => [a.id, a.label])),
+  immediate_manager: "Requestor's Manager",
+};
+
 export function getSpecialApproverLabel(userId) {
-  if (userId === "immediate_manager") return "Immediate Manager";
-  if (userId === "immediate_supervisor") return "Immediate Supervisor";
-  return "";
+  return SPECIAL_APPROVER_LABELS[userId] || "";
 }
 
 function itemVersion(item) {

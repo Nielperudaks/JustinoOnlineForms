@@ -294,41 +294,45 @@ FORM_TEMPLATES = {
 SEED_USERS = [
     # Super Admin
     ("admin@company.com", "admin123", "Super Admin", "super_admin", "GEN"),
+    # Department hierarchy heads
+    ("miguel.justino@company.com", "pass123", "Miguel Justino", "executive", "GEN"),
+    ("ramon.dizon@company.com", "pass123", "Ramon Dizon", "manager", "GEN"),
+    ("clara.soriano@company.com", "pass123", "Clara Soriano", "supervisor", "GEN"),
     # General
-    ("maria.santos@company.com", "pass123", "Maria Santos", "approver", "GEN"),
-    ("ricardo.cruz@company.com", "pass123", "Ricardo Cruz", "approver", "GEN"),
+    ("maria.santos@company.com", "pass123", "Maria Santos", "both", "GEN"),
+    ("ricardo.cruz@company.com", "pass123", "Ricardo Cruz", "both", "GEN"),
     ("ana.reyes@company.com", "pass123", "Ana Reyes", "requestor", "GEN"),
     ("carlos.mendoza@company.com", "pass123", "Carlos Mendoza", "both", "GEN"),
     # Service
-    ("pedro.villanueva@company.com", "pass123", "Pedro Villanueva", "approver", "SVC"),
+    ("pedro.villanueva@company.com", "pass123", "Pedro Villanueva", "both", "SVC"),
     ("elena.garcia@company.com", "pass123", "Elena Garcia", "both", "SVC"),
     ("jose.santos@company.com", "pass123", "Jose Santos", "requestor", "SVC"),
     # Marketing
-    ("sofia.martinez@company.com", "pass123", "Sofia Martinez", "approver", "MKT"),
+    ("sofia.martinez@company.com", "pass123", "Sofia Martinez", "both", "MKT"),
     ("diego.torres@company.com", "pass123", "Diego Torres", "requestor", "MKT"),
     ("lisa.fernandez@company.com", "pass123", "Lisa Fernandez", "both", "MKT"),
     # CIEG/TCG Sales
-    ("roberto.lim@company.com", "pass123", "Roberto Lim", "approver", "CIEG"),
+    ("roberto.lim@company.com", "pass123", "Roberto Lim", "both", "CIEG"),
     ("patricia.tan@company.com", "pass123", "Patricia Tan", "both", "CIEG"),
     ("mark.villanueva@company.com", "pass123", "Mark Villanueva", "requestor", "CIEG"),
     # Davao Service Center
-    ("miguel.aquino@company.com", "pass123", "Miguel Aquino", "approver", "DSC"),
+    ("miguel.aquino@company.com", "pass123", "Miguel Aquino", "both", "DSC"),
     ("rosa.flores@company.com", "pass123", "Rosa Flores", "requestor", "DSC"),
     # MCG
-    ("antonio.ramos@company.com", "pass123", "Antonio Ramos", "approver", "MCG"),
+    ("antonio.ramos@company.com", "pass123", "Antonio Ramos", "both", "MCG"),
     ("jenny.ocampo@company.com", "pass123", "Jenny Ocampo", "requestor", "MCG"),
     # Accounting
-    ("carmen.delacruz@company.com", "pass123", "Carmen Dela Cruz", "approver", "ACCT"),
+    ("carmen.delacruz@company.com", "pass123", "Carmen Dela Cruz", "both", "ACCT"),
     ("ralph.navarro@company.com", "pass123", "Ralph Navarro", "requestor", "ACCT"),
     # Purchasing
-    ("francisco.bautista@company.com", "pass123", "Francisco Bautista", "approver", "PUR"),
+    ("francisco.bautista@company.com", "pass123", "Francisco Bautista", "both", "PUR"),
     ("lucia.navarro@company.com", "pass123", "Lucia Navarro", "requestor", "PUR"),
     # HR and Admin
-    ("teresa.gonzales@company.com", "pass123", "Teresa Gonzales", "approver", "HR"),
+    ("teresa.gonzales@company.com", "pass123", "Teresa Gonzales", "both", "HR"),
     ("manuel.reyes@company.com", "pass123", "Manuel Reyes", "both", "HR"),
     ("grace.lim@company.com", "pass123", "Grace Lim", "requestor", "HR"),
     # Warehouse
-    ("jorge.santos@company.com", "pass123", "Jorge Santos", "approver", "WHSE"),
+    ("jorge.santos@company.com", "pass123", "Jorge Santos", "both", "WHSE"),
     ("isabel.cruz@company.com", "pass123", "Isabel Cruz", "requestor", "WHSE"),
 ]
 
@@ -532,7 +536,9 @@ async def seed_data(db):
     for d in DEPARTMENTS:
         doc = {
             "id": str(uuid.uuid4()), "name": d["name"], "code": d["code"],
-            "description": d["description"], "is_active": True,
+            "description": d["description"],
+            "executive_id": None, "manager_id": None,
+            "is_active": True,
             "created_at": now.isoformat()
         }
         await db.departments.insert_one(doc)
@@ -571,6 +577,27 @@ async def seed_data(db):
         await db.users.insert_one(doc)
         user_map[email.lower()] = {"id": doc["id"], "name": name, "email": email.lower(), "role": role, "department_id": doc["department_id"]}
     logger.info(f"  {len(user_map)} users created.")
+
+    # ── 3b. Department hierarchy assignments ──
+    # One executive can head multiple departments; a manager heads only one.
+    executive = user_map["miguel.justino@company.com"]
+    await db.departments.update_many({}, {"$set": {"executive_id": executive["id"]}})
+    gen_manager = user_map["ramon.dizon@company.com"]
+    gen_supervisor = user_map["clara.soriano@company.com"]
+    gen_group = {
+        "id": str(uuid.uuid4()),
+        "name": "General Admin Team",
+        "supervisor_id": gen_supervisor["id"],
+        "member_ids": [
+            user_map["ana.reyes@company.com"]["id"],
+            user_map["carlos.mendoza@company.com"]["id"],
+        ],
+    }
+    await db.departments.update_one(
+        {"id": dept_map["GEN"]},
+        {"$set": {"manager_id": gen_manager["id"], "department_groups": [gen_group]}},
+    )
+    logger.info("  Department hierarchy assigned (executive/manager/supervisor).")
 
     # ── 4. Assign Approver Chains ──
     assign_count = 0

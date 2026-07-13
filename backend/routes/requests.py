@@ -5,12 +5,16 @@ from utils.helpers import db, get_current_user, render_request_email, send_email
 from utils.form_fields import validate_table_field_rows
 from utils.roles import (
     APPROVER_ROLES,
+    EXECUTIVE_LEVEL,
+    EXECUTIVE_ROLES,
     FORM_MANAGER_ROLES,
+    MANAGER_LEVEL,
     MANAGER_ROLES,
     SUPER_ADMIN,
     SUPERVISOR,
-    executive_role_for_manager,
+    SUPERVISOR_LEVEL,
     is_requestor_capable,
+    user_hierarchy_level,
 )
 from utils.cache import invalidate_stats_cache
 import uuid
@@ -48,67 +52,165 @@ class RequestCancel(BaseModel):
     comments: str
 
 
-async def resolve_immediate_manager(user, requester_dept_id):
-    if not requester_dept_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Requestor has no department assigned. Immediate Manager requires the requestor to have a department.",
-        )
-
-    executive_role = executive_role_for_manager(user)
-    if executive_role:
-        manager_query = {"role": executive_role, "is_active": True}
-        missing_detail = (
-            f"No Immediate Manager ({executive_role.replace('_', ' ').title()}) found. "
-            "Please assign the executive officer role."
-        )
-    else:
-        manager_query = {
-            "role": {"$in": list(MANAGER_ROLES)},
-            "department_id": requester_dept_id,
-            "is_active": True,
-        }
-        missing_detail = (
-            "No Immediate Manager found in requestor's department. "
-            "Please assign Manager (OPS) or Manager (SUP) to the requestor's department."
-        )
-
-    manager_user = await db.users.find_one(manager_query, {"_id": 0})
-    if not manager_user:
-        raise HTTPException(status_code=400, detail=missing_detail)
-    return manager_user["id"], manager_user.get("name", "Immediate Manager")
+# Role-based approval steps that are resolved against the requestor's
+# department hierarchy when a request is created.
+ROLE_BASED_APPROVER_IDS = {
+    "immediate_supervisor",  # requestor's department-group supervisor
+    "requestor_manager",  # requestor's department manager
+    "immediate_manager",  # legacy alias of requestor_manager
+    "department_executive",  # requestor's department executive
+    "immediate_head",  # lowest available head above the requestor's level
+}
 
 
-async def resolve_immediate_supervisor(user, requester_dept_id):
-    if not requester_dept_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Requestor has no department assigned. Immediate Supervisor requires the requestor to have a department.",
-        )
-
-    if user.get("role") == SUPERVISOR:
-        return await resolve_immediate_manager(user, requester_dept_id)
-
-    department = await db.departments.find_one({"id": requester_dept_id}, {"_id": 0})
+async def find_group_supervisor(user, department):
+    """Active supervisor of the requestor's department group, or None."""
+    dept_id = (department or {}).get("id")
     for group in (department or {}).get("department_groups", []):
         if user.get("id") in group.get("member_ids", []):
-            supervisor = await db.users.find_one(
+            return await db.users.find_one(
                 {
                     "id": group.get("supervisor_id"),
                     "role": SUPERVISOR,
-                    "department_id": requester_dept_id,
+                    "department_id": dept_id,
                     "is_active": True,
                 },
-                {"_id": 0},
+                {"_id": 0, "password_hash": 0},
             )
-            if not supervisor:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No Immediate Supervisor found for the requestor's department group. Please assign an active supervisor.",
-                )
-            return supervisor["id"], supervisor.get("name", "Immediate Supervisor")
+    return None
 
-    return await resolve_immediate_manager(user, requester_dept_id)
+
+async def find_department_manager(department):
+    """Active manager assigned to the department, or None.
+
+    Prefers the explicit hierarchy assignment; falls back to an active
+    manager-role user belonging to the department so pre-hierarchy data
+    keeps routing correctly.
+    """
+    if not department:
+        return None
+    manager_id = department.get("manager_id")
+    if manager_id:
+        assigned = await db.users.find_one(
+            {"id": manager_id, "role": {"$in": list(FORM_MANAGER_ROLES)}, "is_active": True},
+            {"_id": 0, "password_hash": 0},
+        )
+        if assigned:
+            return assigned
+    return await db.users.find_one(
+        {
+            "role": {"$in": list(MANAGER_ROLES)},
+            "department_id": department.get("id"),
+            "is_active": True,
+        },
+        {"_id": 0, "password_hash": 0},
+    )
+
+
+async def find_department_executive(department):
+    """Active executive assigned to the department, or None.
+
+    Prefers the explicit hierarchy assignment; falls back to an active
+    executive-role user belonging to the department.
+    """
+    if not department:
+        return None
+    executive_id = department.get("executive_id")
+    if executive_id:
+        assigned = await db.users.find_one(
+            {"id": executive_id, "role": {"$in": list(EXECUTIVE_ROLES)}, "is_active": True},
+            {"_id": 0, "password_hash": 0},
+        )
+        if assigned:
+            return assigned
+    return await db.users.find_one(
+        {
+            "role": {"$in": list(EXECUTIVE_ROLES)},
+            "department_id": department.get("id"),
+            "is_active": True,
+        },
+        {"_id": 0, "password_hash": 0},
+    )
+
+
+async def find_head_at_level(user, department, level):
+    if level == SUPERVISOR_LEVEL:
+        return await find_group_supervisor(user, department)
+    if level == MANAGER_LEVEL:
+        return await find_department_manager(department)
+    if level == EXECUTIVE_LEVEL:
+        return await find_department_executive(department)
+    return None
+
+
+async def resolve_role_based_approver(approver_id, user, department):
+    """Resolve a role-based approval step to (user_id, name), or None to skip.
+
+    Raises HTTP 400 when a mandatory head (the department executive) is
+    missing from the requestor's department hierarchy.
+    """
+    requester_level = user_hierarchy_level(user)
+
+    if approver_id == "immediate_supervisor":
+        # Skips when the requestor has no group supervisor, or already sits
+        # at or above the supervisor level.
+        if requester_level >= SUPERVISOR_LEVEL:
+            return None
+        supervisor = await find_group_supervisor(user, department)
+        if not supervisor or supervisor["id"] == user.get("id"):
+            return None
+        return supervisor["id"], supervisor.get("name", "Supervisor")
+
+    if approver_id in ("requestor_manager", "immediate_manager"):
+        # Skips when the requestor's department has no manager, or the
+        # requestor is at or above the manager level.
+        if requester_level >= MANAGER_LEVEL:
+            return None
+        manager_user = await find_department_manager(department)
+        if not manager_user or manager_user["id"] == user.get("id"):
+            return None
+        return manager_user["id"], manager_user.get("name", "Manager")
+
+    if approver_id == "department_executive":
+        # Mandatory: every department must have an executive assigned.
+        if requester_level >= EXECUTIVE_LEVEL:
+            return None
+        if not department:
+            raise HTTPException(
+                status_code=400,
+                detail="Requestor has no department assigned. The Executive approval step requires the requestor to have a department.",
+            )
+        executive = await find_department_executive(department)
+        if not executive:
+            raise HTTPException(
+                status_code=400,
+                detail="No Executive is assigned to the requestor's department. Please ask the Super Admin to assign one in the Departments tab.",
+            )
+        if executive["id"] == user.get("id"):
+            return None
+        return executive["id"], executive.get("name", "Executive")
+
+    if approver_id == "immediate_head":
+        # Dynamic: walk up from the level right above the requestor's role
+        # (supervisor -> manager -> executive) and pick the first head found.
+        if requester_level >= EXECUTIVE_LEVEL:
+            return None
+        if not department:
+            raise HTTPException(
+                status_code=400,
+                detail="Requestor has no department assigned. The Immediate Head approval step requires the requestor to have a department.",
+            )
+        start_level = max(requester_level + 1, SUPERVISOR_LEVEL)
+        for level in range(start_level, EXECUTIVE_LEVEL + 1):
+            head = await find_head_at_level(user, department, level)
+            if head and head["id"] != user.get("id"):
+                return head["id"], head.get("name", "Immediate Head")
+        raise HTTPException(
+            status_code=400,
+            detail="No Immediate Head found for the requestor's department. Please ask the Super Admin to assign an Executive in the Departments tab.",
+        )
+
+    return None
 
 
 @requests_router.get("")
@@ -302,14 +404,21 @@ async def create_request(req: RequestCreate, user=Depends(get_current_user)):
     next_step_number = 1
     custodian_doc = None
 
+    requester_department = None
+    if requester_dept_id:
+        requester_department = await db.departments.find_one({"id": requester_dept_id}, {"_id": 0})
+
     for step in tmpl.get("approver_chain", []):
         approver_id = step["user_id"]
         approver_name = step.get("user_name", "")
 
-        if approver_id == "immediate_manager":
-            approver_id, approver_name = await resolve_immediate_manager(user, requester_dept_id)
-        elif approver_id == "immediate_supervisor":
-            approver_id, approver_name = await resolve_immediate_supervisor(user, requester_dept_id)
+        if approver_id in ROLE_BASED_APPROVER_IDS:
+            resolved = await resolve_role_based_approver(approver_id, user, requester_department)
+            if resolved is None:
+                # No head exists for this optional step (or the requestor is
+                # at/above its level) — skip to the next approval step.
+                continue
+            approver_id, approver_name = resolved
 
         # Skip duplicate approvers so each user only appears once in the chain
         if approver_id in seen_approver_ids:

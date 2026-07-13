@@ -29,12 +29,14 @@ import {
   getSpecialApproverLabel,
   mergeServerItemsWithLocalChanges,
   removeById,
+  SPECIAL_APPROVERS,
   upsertById,
 } from "@/pages/adminState";
 import { shouldRefreshAdminData } from "@/pages/adminRealtime";
 import {
   getRoleLabel,
   isApproverRole,
+  isExecutiveRole,
   isManagerRole,
   isSuperAdminRole,
   ROLE_OPTIONS,
@@ -136,45 +138,29 @@ function ApproverPicker({ assigned, approvers, onSelect, testId, placeholder }) 
           <CommandInput placeholder="Search approvers by name or email..." />
           <CommandList>
             <CommandEmpty>No matching approvers found.</CommandEmpty>
+            <CommandGroup heading="Role-based approvers">
+              {SPECIAL_APPROVERS.map((special) => (
+                <CommandItem
+                  key={special.id}
+                  value={special.label}
+                  onSelect={() => handleSelect(special.id)}
+                  className="text-xs"
+                >
+                  <Check
+                    className={`w-3.5 h-3.5 ${
+                      assigned?.user_id === special.id ? "opacity-100" : "opacity-0"
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-700">{special.label}</div>
+                    <div className="text-[11px] text-slate-400">
+                      {special.description}
+                    </div>
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
             <CommandGroup heading="Suggested users">
-              <CommandItem
-                value="Immediate Manager"
-                onSelect={() => handleSelect("immediate_manager")}
-                className="text-xs"
-              >
-                <Check
-                  className={`w-3.5 h-3.5 ${
-                    assigned?.user_id === "immediate_manager"
-                      ? "opacity-100"
-                      : "opacity-0"
-                  }`}
-                />
-                <div className="min-w-0">
-                  <div className="font-medium text-slate-700">Immediate Manager</div>
-                  <div className="text-[11px] text-slate-400">
-                    Routes to the requester's department manager
-                  </div>
-                </div>
-              </CommandItem>
-              <CommandItem
-                value="Immediate Supervisor"
-                onSelect={() => handleSelect("immediate_supervisor")}
-                className="text-xs"
-              >
-                <Check
-                  className={`w-3.5 h-3.5 ${
-                    assigned?.user_id === "immediate_supervisor"
-                      ? "opacity-100"
-                      : "opacity-0"
-                  }`}
-                />
-                <div className="min-w-0">
-                  <div className="font-medium text-slate-700">Immediate Supervisor</div>
-                  <div className="text-[11px] text-slate-400">
-                    Routes to the requester's department group supervisor
-                  </div>
-                </div>
-              </CommandItem>
               {approvers.map((approver) => (
                 <CommandItem
                   key={approver.id}
@@ -268,6 +254,44 @@ function CustodianPicker({ assigned, custodians, onSelect, testId, placeholder }
         </Command>
       </PopoverContent>
     </Popover>
+  );
+}
+
+const NO_HEAD_VALUE = "__none__";
+
+function DepartmentHeadSelect({ label, value, options, onChange, placeholder, testId }) {
+  const currentOption = options.find((option) => option.id === value);
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-20 flex-shrink-0 text-[11px] font-medium text-slate-500">
+        {label}
+      </span>
+      <Select
+        value={value || NO_HEAD_VALUE}
+        onValueChange={(v) => onChange(v === NO_HEAD_VALUE ? "" : v)}
+      >
+        <SelectTrigger className="h-8 flex-1 text-xs" data-testid={testId}>
+          <SelectValue placeholder={placeholder}>
+            {value
+              ? currentOption
+                ? currentOption.name
+                : "Unknown user"
+              : placeholder}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_HEAD_VALUE}>
+            <span className="text-slate-400">{placeholder}</span>
+          </SelectItem>
+          {options.map((option) => (
+            <SelectItem key={option.id} value={option.id}>
+              {option.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
@@ -726,35 +750,8 @@ export default function AdminPage() {
   });
 
   // User management
-  const findDepartmentManagerConflict = ({ role, department_id, userId }) => {
-    if (!isManagerRole(role) || !department_id) {
-      return null;
-    }
-
-    return users.find(
-      (u) =>
-        isManagerRole(u.role) &&
-        u.department_id === department_id &&
-        u.id !== userId,
-    );
-  };
-
   const handleSaveUser = async () => {
     try {
-      const existingDepartmentManager = findDepartmentManagerConflict({
-        role: userForm.role,
-        department_id: userForm.department_id,
-        userId: editingUser?.id,
-      });
-
-      if (existingDepartmentManager) {
-        const departmentName = getDeptName(userForm.department_id);
-        toast.error(
-          `The ${departmentName} department already has a manager. Please assign a different role or department.`,
-        );
-        return;
-      }
-
       if (editingUser) {
         const updates = {
           email: userForm.email,
@@ -1106,6 +1103,23 @@ export default function AdminPage() {
     }
   };
 
+  const handleAssignDepartmentHead = async (deptId, field, userId) => {
+    try {
+      const { data: savedDepartment } = await updateDepartment(deptId, {
+        [field]: userId || "",
+      });
+      rememberLocalChange("departments", savedDepartment);
+      setDepartments((prev) => upsertById(prev, savedDepartment));
+      toast.success(
+        field === "executive_id"
+          ? "Department executive updated"
+          : "Department manager updated",
+      );
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to update department");
+    }
+  };
+
   const getDeptName = (id) => departments.find((d) => d.id === id)?.name || "—";
 
   const filteredUsers = users.filter(
@@ -1134,6 +1148,7 @@ export default function AdminPage() {
     manager: "bg-amber-50 text-amber-700 border-amber-200",
     manager_ops: "bg-amber-50 text-amber-700 border-amber-200",
     manager_sup: "bg-orange-50 text-orange-700 border-orange-200",
+    executive: "bg-indigo-50 text-indigo-700 border-indigo-200",
     executive_ops: "bg-indigo-50 text-indigo-700 border-indigo-200",
     executive_sup: "bg-cyan-50 text-cyan-700 border-cyan-200",
   };
@@ -1553,15 +1568,25 @@ export default function AdminPage() {
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                                   {chain.length > 0 && (
                                     <div className="flex -space-x-1">
-                                      {chain.map((a, i) => (
-                                        <div
-                                          key={i}
-                                          className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center border-2 border-white"
-                                          title={a.user_id === "immediate_manager" ? "Immediate Manager" : a.user_name}
-                                        >
-                                          {a.user_id === "immediate_manager" ? "IM" : (a.user_name?.[0] || i + 1)}
-                                        </div>
-                                      ))}
+                                      {chain.map((a, i) => {
+                                        const specialLabel = getSpecialApproverLabel(a.user_id);
+                                        return (
+                                          <div
+                                            key={i}
+                                            className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center border-2 border-white"
+                                            title={specialLabel || a.user_name}
+                                          >
+                                            {specialLabel
+                                              ? specialLabel
+                                                  .split(" ")
+                                                  .map((word) => word[0])
+                                                  .join("")
+                                                  .slice(0, 2)
+                                                  .toUpperCase()
+                                              : (a.user_name?.[0] || i + 1)}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                   {isExpanded ? (
@@ -1773,6 +1798,19 @@ export default function AdminPage() {
                   ).length;
                   const cannotDelete = deptUserCount > 0 || deptTemplateCount > 0;
                   const isEditingDepartment = editingDepartmentId === dept.id;
+                  const executiveOptions = users.filter(
+                    (u) => isExecutiveRole(u.role) && u.is_active !== false,
+                  );
+                  // A manager can head only one department; hide managers
+                  // already assigned elsewhere.
+                  const managerOptions = users.filter(
+                    (u) =>
+                      isManagerRole(u.role) &&
+                      u.is_active !== false &&
+                      !departments.some(
+                        (d) => d.id !== dept.id && d.manager_id === u.id,
+                      ),
+                  );
                   return (
                     <div
                       key={dept.id}
@@ -1907,6 +1945,34 @@ export default function AdminPage() {
                           <p className="text-xs text-slate-400 line-clamp-2 mb-3">
                             {dept.description || "No description provided."}
                           </p>
+                          <div className="space-y-2 mb-3">
+                            <DepartmentHeadSelect
+                              label="Executive"
+                              value={dept.executive_id || ""}
+                              options={executiveOptions}
+                              placeholder="No executive assigned"
+                              testId={`dept-executive-${dept.id}`}
+                              onChange={(v) =>
+                                handleAssignDepartmentHead(dept.id, "executive_id", v)
+                              }
+                            />
+                            <DepartmentHeadSelect
+                              label="Manager"
+                              value={dept.manager_id || ""}
+                              options={managerOptions}
+                              placeholder="No manager assigned"
+                              testId={`dept-manager-${dept.id}`}
+                              onChange={(v) =>
+                                handleAssignDepartmentHead(dept.id, "manager_id", v)
+                              }
+                            />
+                            {!dept.executive_id && (
+                              <p className="text-[11px] text-amber-600">
+                                Assign an executive — Executive and Immediate Head
+                                approval steps need one.
+                              </p>
+                            )}
+                          </div>
                           <div className="flex gap-4 text-xs text-slate-500">
                             <span>{deptTemplateCount} forms</span>
                             <span>{deptUserCount} users</span>

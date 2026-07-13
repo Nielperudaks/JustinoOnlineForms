@@ -31,6 +31,42 @@ class DepartmentUpdate(BaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
     department_groups: Optional[List[DepartmentGroup]] = None
+    # Department hierarchy heads. Send "" to clear an assignment.
+    executive_id: Optional[str] = None
+    manager_id: Optional[str] = None
+
+
+async def validate_department_executive(user_id: str):
+    executive = await db.users.find_one(
+        {"id": user_id, "is_active": True, "role": {"$in": list(EXECUTIVE_ROLES)}},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not executive:
+        raise HTTPException(
+            status_code=400,
+            detail="Department executive must be an active user with the Executive role",
+        )
+
+
+async def validate_department_manager(dept_id: str, user_id: str):
+    manager_user = await db.users.find_one(
+        {"id": user_id, "is_active": True, "role": {"$in": list(FORM_MANAGER_ROLES)}},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not manager_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Department manager must be an active user with the Manager role",
+        )
+    other_dept = await db.departments.find_one(
+        {"manager_id": user_id, "id": {"$ne": dept_id}},
+        {"_id": 0, "id": 1, "name": 1},
+    )
+    if other_dept:
+        raise HTTPException(
+            status_code=400,
+            detail=f"This manager is already assigned to the {other_dept.get('name', 'another')} department. A manager can head only one department.",
+        )
 
 
 async def normalize_department_groups(dept_id: str, groups: List[DepartmentGroup]):
@@ -127,6 +163,8 @@ async def create_department(req: DepartmentCreate, admin=Depends(require_admin))
         "name": req.name,
         "code": req.code.upper(),
         "description": req.description or "",
+        "executive_id": None,
+        "manager_id": None,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -141,9 +179,21 @@ async def create_department(req: DepartmentCreate, admin=Depends(require_admin))
 
 @departments_router.put("/{dept_id}")
 async def update_department(dept_id: str, req: DepartmentUpdate, admin=Depends(require_admin)):
-    updates = {k: v for k, v in req.model_dump(exclude={"department_groups"}).items() if v is not None}
+    updates = {
+        k: v
+        for k, v in req.model_dump(exclude={"department_groups", "executive_id", "manager_id"}).items()
+        if v is not None
+    }
     if req.department_groups is not None:
         updates["department_groups"] = await normalize_department_groups(dept_id, req.department_groups)
+    if req.executive_id is not None:
+        if req.executive_id:
+            await validate_department_executive(req.executive_id)
+        updates["executive_id"] = req.executive_id or None
+    if req.manager_id is not None:
+        if req.manager_id:
+            await validate_department_manager(dept_id, req.manager_id)
+        updates["manager_id"] = req.manager_id or None
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     if "code" in updates:
