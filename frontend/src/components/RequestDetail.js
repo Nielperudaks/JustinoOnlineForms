@@ -38,6 +38,7 @@ import {
   canViewCancellationReason,
   getCancellationReasonError,
 } from "./requestCancellation";
+import { date } from "zod/v4-mini";
 
 function getRequestAgeIndicator(request) {
   if (
@@ -131,13 +132,24 @@ function ApprovalChain({ approvals, title = "Approval Chain" }) {
                     a.step
                   )}
                 </div>
-                <div>
+                <div className="">
                   <div className="font-medium text-xs">
                     {a.approver_name || "Approver"}
                   </div>
                   <div className="text-[10px] opacity-70 capitalize">
                     {a.status}
                   </div>
+                  {isApproved || isFulfilled || isRejected ? (
+                    <div className="text-[10px] font-semibold opacity-70">
+                      {a.acted_at &&
+                        new Date(a.acted_at).toLocaleDateString("en-US", {
+                          month: "2-digit",
+                          day: "2-digit",
+                          year: "numeric",
+                          timeZone: "UTC",
+                        }).replace(/\//g, ' - ')}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               {i < approvals.length - 1 && (
@@ -274,7 +286,10 @@ export default function RequestDetail({
   const requesterDept = departments?.find(
     (d) => d.id === request.requester_department_id,
   );
-  const showCancellationReason = canViewCancellationReason(request, currentUser);
+  const showCancellationReason = canViewCancellationReason(
+    request,
+    currentUser,
+  );
 
   const canApprove =
     request.status === "in_progress" &&
@@ -544,17 +559,17 @@ export default function RequestDetail({
               }
               if (getRequestFieldType(request, key) === "textarea") {
                 return (
-                <div key={key} className="w-full px-2">
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                    <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">
-                      {label}
-                    </div>
-                    <div className="text-sm text-slate-700">
-                      {formatRequestValue(value)}
+                  <div key={key} className="w-full px-2">
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">
+                        {label}
+                      </div>
+                      <div className="text-sm text-slate-700">
+                        {formatRequestValue(value)}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
+                );
               }
               return (
                 <div key={key} className="w-full md:w-1/2 px-2">
