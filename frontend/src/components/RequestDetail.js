@@ -627,6 +627,7 @@ export default function RequestDetail({
                       approver_name: request.custodian.user_name || "Custodian",
                       status: request.custodian.status,
                       comments: request.custodian.comments,
+                      acted_at: request.custodian.acted_at
                     },
                   ]}
                 />
