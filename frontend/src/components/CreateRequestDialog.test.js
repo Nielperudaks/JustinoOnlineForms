@@ -1,3 +1,6 @@
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import CreateRequestDialog from "./CreateRequestDialog";
 import {
   getTableCellInputType,
   hasDuplicateTableRows,
@@ -49,5 +52,59 @@ describe("CreateRequestDialog table behavior", () => {
         ],
       }),
     ).toBe(false);
+  });
+});
+
+describe("CreateRequestDialog form search", () => {
+  let container;
+  let root;
+  let originalScrollTo;
+
+  beforeEach(() => {
+    global.IS_REACT_ACT_ENVIRONMENT = true;
+    originalScrollTo = HTMLElement.prototype.scrollTo;
+    HTMLElement.prototype.scrollTo = jest.fn();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    HTMLElement.prototype.scrollTo = originalScrollTo;
+  });
+
+  test("shows only forms whose names match the search case-insensitively", () => {
+    act(() => {
+      root.render(
+        <CreateRequestDialog
+          departments={[{ id: 1, code: "HR", name: "Human Resources" }]}
+          templates={[
+            { id: 1, department_id: 1, name: "Leave Request", fields: [] },
+            { id: 2, department_id: 1, name: "Overtime Authorization", fields: [] },
+          ]}
+          onSubmit={() => {}}
+          onClose={() => {}}
+        />,
+      );
+    });
+
+    act(() => {
+      container.querySelector('[data-testid="select-dept-HR"]').click();
+    });
+
+    const search = container.querySelector('[data-testid="search-forms"]');
+    expect(search).not.toBeNull();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
+        search,
+        "LEAVE",
+      );
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("Leave Request");
+    expect(container.textContent).not.toContain("Overtime Authorization");
   });
 });

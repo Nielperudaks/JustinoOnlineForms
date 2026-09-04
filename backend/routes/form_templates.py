@@ -303,7 +303,7 @@ async def delete_template(template_id: str, current=Depends(require_form_manager
     active_count = await db.requests.count_documents(
         {
             "form_template_id": template_id,
-            "status": {"$in": ["in_progress"]},
+            "status": {"$in": ["in_progress", "pending"]},
         }
     )
     if active_count > 0:

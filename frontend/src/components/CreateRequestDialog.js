@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+
 import {
   Select,
   SelectContent,
@@ -24,7 +25,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { X, FileText, ChevronRight, ChevronDown, Upload, File } from "lucide-react";
+import {
+  X,
+  FileText,
+  ChevronRight,
+  ChevronDown,
+  Upload,
+  File,
+  Search,
+} from "lucide-react";
 import {
   getTableCellInputType,
   hasDuplicateTableRows,
@@ -34,8 +43,15 @@ import {
 const DROPZONE_MAX_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_EXTENSIONS = /\.(png|jpg|jpeg|gif|webp|pdf|xls|xlsx|doc|docx)$/i;
 
-
-function DropzoneInput({ value, onFile, fieldName, required, accept, maxSize, allowedExtensions }) {
+function DropzoneInput({
+  value,
+  onFile,
+  fieldName,
+  required,
+  accept,
+  maxSize,
+  allowedExtensions,
+}) {
   const [error, setError] = useState("");
   const [drag, setDrag] = useState(false);
   const inputRef = React.useRef(null);
@@ -75,8 +91,6 @@ function DropzoneInput({ value, onFile, fieldName, required, accept, maxSize, al
     e.target.value = "";
   };
 
- 
-
   return (
     <div className="space-y-2">
       <div
@@ -88,7 +102,9 @@ function DropzoneInput({ value, onFile, fieldName, required, accept, maxSize, al
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-          drag ? "border-blue-400 bg-blue-50/50" : "border-slate-200 hover:border-slate-300"
+          drag
+            ? "border-blue-400 bg-blue-50/50"
+            : "border-slate-200 hover:border-slate-300"
         } ${error ? "border-red-300 bg-red-50/30" : ""}`}
       >
         <input
@@ -178,6 +194,7 @@ export default function CreateRequestDialog({
   const [step, setStep] = useState(1); // 1: select dept, 2: select form, 3: fill form
   const [selectedDeptId, setSelectedDeptId] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [formSearch, setFormSearch] = useState("");
   const [formData, setFormData] = useState({});
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -188,14 +205,14 @@ export default function CreateRequestDialog({
     contentRef.current.scrollTo({ top: 0, behavior: "auto" });
   }, [step]);
 
-
   const filteredTemplates = templates
     .filter((t) => !selectedDeptId || t.department_id === selectedDeptId)
+    .filter((t) =>
+      (t.name || "").toLowerCase().includes(formSearch.trim().toLowerCase()),
+    )
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const deptName = departments.find((d) => d.id === selectedDeptId)?.name || "";
-  
-
 
   const handleSelectTemplate = (tmpl) => {
     setSelectedTemplate(tmpl);
@@ -243,7 +260,8 @@ export default function CreateRequestDialog({
       } else if (f.type === "dropzone") {
         if (val == null) return `${f.label || "File"} is required`;
       } else if (f.type === "select" && f.is_multiselect) {
-        if (!Array.isArray(val) || val.length === 0) return `${f.label || "Field"} is required`;
+        if (!Array.isArray(val) || val.length === 0)
+          return `${f.label || "Field"} is required`;
       } else if (val == null || String(val || "").trim() === "") {
         return `${f.label || "Field"} is required`;
       }
@@ -269,46 +287,40 @@ export default function CreateRequestDialog({
     setSubmitting(false);
   };
 
-  const updateTableCell = useCallback(
-    (fieldName, rowIdx, colIdx, value) => {
-      setFormData((prev) => {
-        const tbl = prev[fieldName];
-        if (!tbl?.rows) return prev;
-        const rows = tbl.rows.map((r, ri) =>
-          ri === rowIdx ? r.map((c, ci) => (ci === colIdx ? value : c)) : r,
-        );
-        return { ...prev, [fieldName]: { ...tbl, rows } };
-      });
-    },
-    [],
-  );
+  const updateTableCell = useCallback((fieldName, rowIdx, colIdx, value) => {
+    setFormData((prev) => {
+      const tbl = prev[fieldName];
+      if (!tbl?.rows) return prev;
+      const rows = tbl.rows.map((r, ri) =>
+        ri === rowIdx ? r.map((c, ci) => (ci === colIdx ? value : c)) : r,
+      );
+      return { ...prev, [fieldName]: { ...tbl, rows } };
+    });
+  }, []);
 
-  const handleFileDrop = useCallback(
-    (fieldName, file) => {
-      if (!file) return;
-      const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
-      if (!ALLOWED_EXTENSIONS.test(ext)) {
-        return; // invalid type - will show error
-      }
-      if (file.size > DROPZONE_MAX_SIZE) {
-        return; // too large
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result;
-        setFormData((prev) => ({
-          ...prev,
-          [fieldName]: {
-            filename: file.name,
-            base64: base64.split(",")[1] || base64,
-            mimeType: file.type,
-          },
-        }));
-      };
-      reader.readAsDataURL(file);
-    },
-    [],
-  );
+  const handleFileDrop = useCallback((fieldName, file) => {
+    if (!file) return;
+    const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+    if (!ALLOWED_EXTENSIONS.test(ext)) {
+      return; // invalid type - will show error
+    }
+    if (file.size > DROPZONE_MAX_SIZE) {
+      return; // too large
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result;
+      setFormData((prev) => ({
+        ...prev,
+        [fieldName]: {
+          filename: file.name,
+          base64: base64.split(",")[1] || base64,
+          mimeType: file.type,
+        },
+      }));
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
   const renderFieldInput = (field) => {
     const val = formData[field.name] ?? "";
@@ -329,7 +341,9 @@ export default function CreateRequestDialog({
           );
         }
         return (
-          <div className={`rounded-lg border  overflow-hidden ${getValidationError() ? "border-red-300" : "border-slate-200"}`}>
+          <div
+            className={`rounded-lg border  overflow-hidden ${getValidationError() ? "border-red-300" : "border-slate-200"}`}
+          >
             {tbl?.title && (
               <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">
                 {tbl.title}
@@ -502,10 +516,10 @@ export default function CreateRequestDialog({
         </div>
 
         {/* Scrollable Content Area */}
-        <div ref={contentRef} className="flex-1 overflow-y-auto p-5" >
+        <div ref={contentRef} className="flex-1 overflow-y-auto p-5">
           {/* Step 1: Select Department */}
-          {step === 1 && (
-            sortedDepartments.length === 0 ? (
+          {step === 1 &&
+            (sortedDepartments.length === 0 ? (
               <div className="text-center py-8 text-sm text-slate-400">
                 No departments with available forms
               </div>
@@ -533,15 +547,27 @@ export default function CreateRequestDialog({
                   </button>
                 ))}
               </div>
-            )
-          )}
+            ))}
 
           {/* Step 2: Select Form Template */}
           {step === 2 && (
             <div className="space-y-2">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  type="search"
+                  value={formSearch}
+                  onChange={(event) => setFormSearch(event.target.value)}
+                  placeholder="Search forms..."
+                  data-testid="search-forms"
+                  className="pl-9"
+                />
+              </div>
               {filteredTemplates.length === 0 ? (
                 <div className="text-center py-8 text-sm text-slate-400">
-                  No forms available for this department
+                  {formSearch
+                    ? "No matching forms"
+                    : "No forms available for this department"}
                 </div>
               ) : (
                 filteredTemplates.map((tmpl) => (
@@ -573,7 +599,7 @@ export default function CreateRequestDialog({
 
           {/* Step 3: Fill Form */}
           {step === 3 && selectedTemplate && (
-            <div className="space-y-4" >
+            <div className="space-y-4">
               <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-blue-700">
                   Request Name

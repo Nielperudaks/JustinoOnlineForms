@@ -17,6 +17,7 @@ import {
   listAllTemplates,
   updateTemplate,
   createTemplate,
+  deleteTemplate,
   listApprovers,
   listCustodians,
   getDashboardStats,
@@ -715,6 +716,15 @@ export default function AdminPage() {
     });
   }, [rememberLocalChange]);
 
+  const removeTemplateFromState = useCallback((templateId) => {
+    rememberLocalChange("templates", templateId, true);
+    setTemplates((prev) => {
+      const next = removeById(prev, templateId);
+      setStats((current) => ({ ...current, total_templates: next.length }));
+      return next;
+    });
+  }, [rememberLocalChange]);
+
   useEffect(() => {
     if (!canManageSettings) {
       navigate("/");
@@ -929,6 +939,19 @@ export default function AdminPage() {
   const handleEditForm = (tmpl) => {
     setEditingTemplate(tmpl);
     setShowBuildFormDialog(true);
+  };
+
+  const handleDeleteForm = async (tmpl) => {
+    if (!window.confirm(`Delete the form "${tmpl.name}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteTemplate(tmpl.id);
+      removeTemplateFromState(tmpl.id);
+      toast.success("Form deleted");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to delete form");
+    }
   };
 
   const handleToggleTemplateActive = async (tmpl) => {
@@ -1624,6 +1647,19 @@ export default function AdminPage() {
                                   data-testid={`edit-template-${tmpl.id}`}
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteForm(tmpl);
+                                  }}
+                                  className="p-1.5 hover:bg-red-50 rounded text-slate-500 hover:text-red-600 transition-colors"
+                                  title="Delete form"
+                                  aria-label="Delete form"
+                                  data-testid={`delete-template-${tmpl.id}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </div>

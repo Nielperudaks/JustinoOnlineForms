@@ -336,6 +336,19 @@ def test_manager_cannot_delete_template_outside_department(fake_db):
     assert exc.value.status_code == 403
 
 
+def test_manager_cannot_delete_template_with_pending_request(fake_db):
+    fake_db.requests.items.append(
+        {"form_template_id": "template-a", "status": "pending"},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        run(form_templates.delete_template("template-a", current=manager()))
+
+    assert exc.value.status_code == 400
+    assert "pending or active requests" in exc.value.detail
+    assert any(template["id"] == "template-a" for template in fake_db.form_templates.items)
+
+
 def test_template_persists_typed_table_columns_and_unique_flags(fake_db):
     req = make_template_create(
         fields=[
